@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube AdFree Lite otimizado para LG UK6530PSF / webOS 4, com layout original preservado e menu lateral enxuto.",
+      "description": "YouTube AdFree Lite otimizado para LG UK6530PSF / webOS 4, com cards da Início sincronizados ao tamanho real de Inscrições.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.8.7",
+        "version": "0.8.8",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "YouTube AdFree Lite com layout original, menu lateral enxuto e correção visual do player.",
+        "appDescription": "YouTube AdFree Lite com tamanho adaptativo dos cards da Início medido na aba Inscrições.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.3.1/YouTube-UK6530-Lite-v0.3.1.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.3.2/YouTube-UK6530-Lite-v0.3.2.ipk",
         "ipkHash": {
-          "sha256": "a30d610e81664c321975359a8b5f4873a3099242f36621ef0fc883da2cdee4cf"
+          "sha256": "45d4c7e5f041d2d2f21cae4cb87a42e193fe69033d965a5dd571e3feddf9ff00"
         }
       }
     }
