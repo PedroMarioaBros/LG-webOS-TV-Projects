@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
-PMCN YouTube UK6530 v0.2.0 — build Lite agressiva para LG UK6530PSF/webOS 4.
+PMCN YouTube UK6530 v0.3.0 — interface compacta para LG UK6530PSF/webOS 4.
 
-Objetivo:
-- zero anúncios servidos pelo YouTube;
-- reduzir ao mínimo código/runtime opcional;
-- remover módulos que o usuário não usa;
-- remover atalhos/categorias de navegação não desejados antes da renderização;
-- tornar transições de foco/menu instantâneas;
-- manter reprodução, busca, início, inscrições, biblioteca e configurações do YouTube.
-
-Upstream fixado pelo workflow:
-NicholasBly/youtube-webos @ 5f7aa18fa0829b4e0607475222d5adacd85c6eff
+Base: perfil Lite v0.2.0.
+Novidades:
+- cartões compactos (~18rem) em todas as grades/prateleiras de vídeo;
+- remoção robusta das categorias Jogos/Música/Esportes/Podcasts/Notícias/Filmes/Ao vivo;
+- retirada dos gradientes/camadas pretas adicionados pelo fork;
+- mantém thumbnails originais/leves do YouTube (sem Max Thumbnail Quality);
+- preserva adblock fixo, AV1 evitado e buffer traseiro de 20 s.
 """
 
 from pathlib import Path
@@ -37,6 +34,10 @@ def append_text(path: str, text: str) -> None:
         raise RuntimeError(f"{path}: bloco já existe")
     p.write_text(data.rstrip() + "\n\n" + text.strip() + "\n", encoding="utf-8")
 
+def write_text(path: str, text: str) -> None:
+    p = ROOT / path
+    p.write_text(text, encoding="utf-8")
+
 def require_contains(path: str, needle: str) -> None:
     data = (ROOT / path).read_text(encoding="utf-8")
     if needle not in data:
@@ -48,16 +49,13 @@ def require_absent(path: str, needle: str) -> None:
         raise RuntimeError(f"{path}: validação falhou; trecho ainda presente: {needle}")
 
 # ---------------------------------------------------------------------------
-# 1) Perfil FIXO Lite: sem depender das preferências antigas do localStorage
+# 1) Perfil fixo Lite
 # ---------------------------------------------------------------------------
 
 profile_marker = "let localConfig = Object.assign({}, defaultConfig, loadStoredConfig() || {});"
 profile_block = profile_marker + r"""
 
-// PMCN UK6530 LITE v2 -------------------------------------------------------
-// This build deliberately fixes the expensive/unused options instead of
-// exposing a large configuration UI. Values are applied on every boot so an
-// older v0.1 localStorage cannot silently re-enable background features.
+// PMCN UK6530 LITE v3 -------------------------------------------------------
 const UK6530_LITE_PROFILE = {
   enableAdBlock: true,
   enableTrackingBlock: false,
@@ -81,7 +79,7 @@ const UK6530_LITE_PROFILE = {
 Object.assign(localConfig, UK6530_LITE_PROFILE);
 try {
   window.localStorage.setItem(CONFIG_KEY, JSON.stringify(localConfig));
-  window.localStorage.setItem('pmcn-uk6530-profile', 'lite-v2');
+  window.localStorage.setItem('pmcn-uk6530-profile', 'lite-v3');
 } catch {
   // Storage failure must never stop YouTube from launching.
 }
@@ -95,8 +93,7 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
-# 2) Cortar módulos opcionais inteiros do bundle.
-#    ui.js puxava settings/shortcuts/SponsorBlock UI/qualidade/logo/notificações.
+# 2) Cortes do bundle Lite
 # ---------------------------------------------------------------------------
 
 for line in [
@@ -107,7 +104,6 @@ for line in [
 ]:
     remove_once("src/userScript.js", line)
 
-# Buffer conservador-agressivo já validado em v0.1: manter 20 s.
 replace_once(
     "src/userScript.js",
     "initBufferLimit();\n\tconsole.info('Initiating buffer limit');",
@@ -115,8 +111,7 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
-# 3) Remover completamente o motor de miniaturas HD do caminho do adblock.
-#    Na v0.2 ele não é configurável nem carregado.
+# 3) Sem motor pesado de miniaturas HD
 # ---------------------------------------------------------------------------
 
 remove_once(
@@ -134,8 +129,7 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
-# 4) Navegação Lite: remover categorias que o usuário não usa ANTES do DOM.
-#    Mantemos Pesquisa, Início, Inscrições, Biblioteca e Configurações.
+# 4) Filtro JSON de navegação (primeira barreira)
 # ---------------------------------------------------------------------------
 
 ui_strings_end = """const UI_STRINGS = {
@@ -147,18 +141,24 @@ ui_strings_end = """const UI_STRINGS = {
 """
 nav_block = ui_strings_end + r"""
 
-// PMCN UK6530 Lite: category/navigation entries removed before rendering.
-// Exact PT-BR and EN labels are intentional: the TV is PT-BR, while YouTube
-// occasionally returns untranslated labels during experiments/account changes.
 const UK6530_BLOCKED_NAV_TITLES = new Set([
-  'Jogos', 'Gaming', 'Games',
-  'Música', 'Music',
-  'Esportes', 'Sports',
-  'Podcast', 'Podcasts',
-  'Notícias', 'News',
-  'Filmes', 'Movies', 'Movies & TV',
-  'Ao vivo', 'Live'
+  'jogos', 'games', 'gaming',
+  'musica', 'music',
+  'esportes', 'sports',
+  'podcast', 'podcasts',
+  'noticias', 'news',
+  'filmes', 'movies', 'movies & tv',
+  'ao vivo', 'live'
 ]);
+
+function normalizeUK6530NavTitle(value) {
+  if (!value) return '';
+  return String(value)
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 """
 replace_once("src/adblock.js", ui_strings_end, nav_block)
 
@@ -175,27 +175,70 @@ lite_nav = r"""  const uk6530Title =
     renderer.title?.simpleText ||
     renderer.title?.runs?.[0]?.text ||
     renderer.tabIdentifier ||
+    renderer.text?.simpleText ||
+    renderer.text?.runs?.[0]?.text ||
+    renderer.label ||
     (typeof renderer.title === 'string' ? renderer.title : undefined);
 
-  if (UK6530_BLOCKED_NAV_TITLES.has(uk6530Title)) return true;
+  if (UK6530_BLOCKED_NAV_TITLES.has(normalizeUK6530NavTitle(uk6530Title))) return true;
 
 """ + insert_point
 replace_once("src/adblock.js", insert_point, lite_nav)
 
 # ---------------------------------------------------------------------------
-# 5) "Animações 0": remover transições cosméticas da navegação, sem matar
-#    spinners/loading nem mexer nas animações do próprio vídeo.
+# 5) CSS: zero animações cosméticas + cards compactos + sem overlay preto
 # ---------------------------------------------------------------------------
 
+# Neutraliza o gradiente/camada escura que o fork adiciona ao player.
+replace_once(
+    "src/yt-fixes.css",
+    """.ytLrWatchDefaultShadow,
+[idomkey='shadow'] {
+  background-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0.8) 90%
+  ) !important;
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+.ytLrWatchDefault2025Shadow {
+  background-color: rgba(11, 11, 11, 0.5) !important;
+}
+""",
+    """.ytLrWatchDefaultShadow,
+[idomkey='shadow'],
+.ytLrWatchDefault2025Shadow {
+  background: transparent !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+"""
+)
+
 append_text("src/yt-fixes.css", r"""
-/* PMCN UK6530 Lite v2 -------------------------------------------------------
-   Focus/menu transitions are made instantaneous. We intentionally do NOT use
-   "* { animation: none }": YouTube loading spinners and player internals still
-   need CSS animations. */
+/* PMCN UK6530 Lite v3 -------------------------------------------------------
+   Layout compacto inspirado na aba Inscrições: preserva as miniaturas leves
+   fornecidas pelo YouTube e reduz a ampliação visual que evidenciava pixelização. */
 html,
 body,
 ytlr-app {
   scroll-behavior: auto !important;
+}
+
+ytlr-tile-renderer,
+ytlr-lockup-view-model {
+  width: 18rem !important;
+  min-width: 18rem !important;
+  max-width: 18rem !important;
+  flex: 0 0 18rem !important;
+}
+
+ytlr-tile-renderer ytlr-tile-header-renderer,
+ytlr-lockup-view-model ytlr-tile-header-renderer {
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 ytlr-tile-renderer,
@@ -222,35 +265,128 @@ yt-focus-container,
 """)
 
 # ---------------------------------------------------------------------------
-# 6) Identificação/versionamento
+# 6) DOM guard: segunda barreira para o menu lateral.
+#    É childList-only e não mede layout, para não criar jank.
+# ---------------------------------------------------------------------------
+
+pmcn_ui = r"""const BLOCKED = new Set([
+  'jogos','games','gaming','musica','music','esportes','sports',
+  'podcast','podcasts','noticias','news','filmes','movies','movies & tv',
+  'ao vivo','live'
+]);
+
+function norm(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function labelOf(el) {
+  return norm(el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent);
+}
+
+function hideBlocked(root) {
+  if (!root || root.nodeType !== 1 && root !== document) return;
+  const selector = [
+    'ytlr-guide-entry-renderer',
+    'ytlr-navigation-item-renderer',
+    'ytlr-pivot-bar-item-renderer',
+    'ytlr-tab-renderer',
+    '[role="menuitem"]',
+    '[role="tab"]'
+  ].join(',');
+
+  const nodes = [];
+  if (root.matches && root.matches(selector)) nodes.push(root);
+  if (root.querySelectorAll) root.querySelectorAll(selector).forEach((n) => nodes.push(n));
+
+  for (const el of nodes) {
+    const label = labelOf(el);
+    if (BLOCKED.has(label)) {
+      el.hidden = true;
+      el.setAttribute('aria-hidden', 'true');
+      el.setAttribute('tabindex', '-1');
+      el.style.display = 'none';
+    }
+  }
+}
+
+let scheduled = false;
+function schedule(root) {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    hideBlocked(root || document);
+  });
+}
+
+function start() {
+  hideBlocked(document);
+  const host = document.querySelector('ytlr-app') || document.body || document.documentElement;
+  if (!host) return;
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node && node.nodeType === 1) {
+          schedule(node);
+          return;
+        }
+      }
+    }
+  });
+  observer.observe(host, { childList: true, subtree: true });
+  window.addEventListener('yt-navigate-finish', () => schedule(document));
+  window.addEventListener('ytaf-page-update', () => schedule(document));
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', start, { once: true });
+} else {
+  start();
+}
+"""
+write_text("src/pmcn-compact-ui.js", pmcn_ui)
+
+replace_once(
+    "src/userScript.js",
+    "import './yt-fixes.css';\n",
+    "import './yt-fixes.css';\nimport './pmcn-compact-ui.js';\n"
+)
+
+# ---------------------------------------------------------------------------
+# 7) Versionamento
 # ---------------------------------------------------------------------------
 
 appinfo_path = ROOT / "assets/appinfo.json"
 appinfo = json.loads(appinfo_path.read_text(encoding="utf-8"))
-appinfo["version"] = "0.8.5"
+appinfo["version"] = "0.8.6"
 appinfo["title"] = "YouTube UK6530"
 appinfo["vendor"] = "PMCN / webosbrew.org"
 appinfo_path.write_text(json.dumps(appinfo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 pkg_path = ROOT / "package.json"
 pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-pkg["version"] = "0.8.5"
+pkg["version"] = "0.8.6"
 pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 # ---------------------------------------------------------------------------
-# 7) Fail-fast: nunca publicar uma v0.2 parcialmente aplicada
+# 8) Fail-fast
 # ---------------------------------------------------------------------------
 
 require_contains("src/config.js", "const UK6530_LITE_PROFILE")
 require_contains("src/config.js", "enableAdBlock: true")
 require_contains("src/config.js", "forceVideoCodec: 'no_av1'")
-require_contains("src/config.js", "forcePreviews: 'force_off'")
-require_contains("src/config.js", "removeGlobalShorts: true")
-require_contains("src/config.js", "removeLiveVideos: true")
+require_contains("src/config.js", "upgradeThumbnails: false")
 require_contains("src/userScript.js", "retainBehindSecs: 20")
-require_contains("src/adblock.js", "UK6530_BLOCKED_NAV_TITLES")
-require_contains("src/yt-fixes.css", "PMCN UK6530 Lite v2")
-require_contains("assets/appinfo.json", '"version": "0.8.5"')
+require_contains("src/userScript.js", "import './pmcn-compact-ui.js';")
+require_contains("src/adblock.js", "normalizeUK6530NavTitle")
+require_contains("src/yt-fixes.css", "PMCN UK6530 Lite v3")
+require_contains("src/yt-fixes.css", "width: 18rem !important")
+require_contains("src/yt-fixes.css", "background: transparent !important")
+require_contains("assets/appinfo.json", '"version": "0.8.6"')
 
 for needle in [
     "import './ui.js';",
@@ -263,4 +399,4 @@ for needle in [
 require_absent("src/adblock.js", "thumbnailHookRequired")
 require_absent("src/adblock.js", "upgradeResponseThumbnails")
 
-print("PMCN UK6530 Lite v0.2.0 aplicado com sucesso.")
+print("PMCN UK6530 Lite v0.3.0 aplicado com sucesso.")
