@@ -320,6 +320,8 @@ if (document.readyState === 'loading') {
 } else {
   start();
 }
+
+export {};
 """
 write_text("src/pmcn-menu-filter.js", menu_filter)
 
@@ -443,6 +445,8 @@ window.addEventListener('hashchange', scheduleRouteApply);
 window.addEventListener('popstate', scheduleRouteApply);
 window.addEventListener('yt-navigate-finish', scheduleRouteApply);
 window.addEventListener('ytaf-page-update', scheduleRouteApply);
+
+export {};
 """
 write_text("src/pmcn-card-sync.js", card_sync)
 
@@ -477,6 +481,7 @@ require_contains("src/pmcn-card-sync.js", "pmcn-subscriptions-card-width-v1")
 require_contains("src/pmcn-card-sync.js", "offsetWidth")
 require_contains("src/pmcn-card-sync.js", "fesubscriptions")
 require_contains("src/pmcn-card-sync.js", "fewhat_to_watch")
+require_contains("src/pmcn-card-sync.js", "export {};")
 require_contains("assets/appinfo.json", '"version": "0.8.8"')
 
 for needle in [
