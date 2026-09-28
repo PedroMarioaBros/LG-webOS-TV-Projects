@@ -1,0 +1,36 @@
+name: Restore exact YouTube UK6530 0.8.8
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/restore-exact-youtube-088.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact approved 0.8.8 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir restored
+          gh run download 36463105907             --repo "$GITHUB_REPOSITORY"             --name youtube-uk6530-lite-v0.3.2             --dir restored
+
+      - name: Verify exact IPK hash
+        run: |
+          set -euo pipefail
+          cd restored
+          echo "45d4c7e5f041d2d2f21cae4cb87a42e193fe69033d965a5dd571e3feddf9ff00  YouTube-UK6530-Lite-v0.3.2.ipk" | sha256sum -c -
+
+      - name: Restore exact release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload youtube-uk6530-v0.3.2             restored/YouTube-UK6530-Lite-v0.3.2.ipk             restored/SHA256SUMS.txt             --clobber             --repo "$GITHUB_REPOSITORY"
