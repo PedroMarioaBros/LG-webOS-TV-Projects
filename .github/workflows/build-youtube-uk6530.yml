@@ -9,7 +9,7 @@ on:
       - ".github/workflows/build-youtube-uk6530.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -78,3 +78,23 @@ jobs:
           path: output/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish persistent beta release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-v0.1.0"
+          IPK="output/YouTube-UK6530-Optimized-v0.1.0.ipk"
+          SUMS="output/SHA256SUMS.txt"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "YouTube UK6530 Optimized v0.1.0" \
+              --prerelease \
+              --notes "Primeira build de teste para LG UK6530PSF/webOS 4. Bloqueio de anúncios travado em ON, AV1 evitado, perfil de baixo consumo e buffer traseiro reduzido para 20 s."
+          fi
