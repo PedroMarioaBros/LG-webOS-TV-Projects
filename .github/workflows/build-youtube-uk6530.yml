@@ -5,7 +5,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "youtube-uk6530-optimized/**"
+      - "youtube-uk6530-optimized/tools/**"
       - ".github/workflows/build-youtube-uk6530.yml"
 
 permissions:
