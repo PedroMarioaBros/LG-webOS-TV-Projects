@@ -6,7 +6,7 @@
 - ID: `youtube.leanback.v4`
 - Versão webOS do pacote: `0.8.4`
 - Build do projeto: `v0.1.0`
-- SHA-256: `3afd9cc80684fe0dce4b9cd4101a761fde10147d6f84cdb8dd6b3eb1d79f1d52`
+- SHA-256: `eab4017bb0df446a48f176ebd84b7dd368aa4ec4547c8b0a31ae19c39dd1fbe6`
 
 ## Instalação via repositório do Homebrew Channel
 
