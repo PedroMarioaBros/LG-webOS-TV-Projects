@@ -429,8 +429,8 @@ write_text("src/pmcn-home-static.js", home_static)
 
 replace_once(
     "src/userScript.js",
-    "import './yt-fixes.css';\\n",
-    "import './yt-fixes.css';\\nimport './pmcn-menu-filter.js';\\nimport './pmcn-home-static.js';\\n"
+    "import './yt-fixes.css';\n",
+    "import './yt-fixes.css';\nimport './pmcn-menu-filter.js';\nimport './pmcn-home-static.js';\n"
 )
 # 8) Versionamento
 appinfo_path = ROOT / "assets/appinfo.json"
