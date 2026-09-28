@@ -1,42 +1,39 @@
-# Instalação — YouTube UK6530 Optimized v0.1.0
+# Instalação — YouTube UK6530 Lite v0.2.0
 
-## Pacote
+## Pacote atual
 
 - Aplicativo: `YouTube UK6530`
 - ID: `youtube.leanback.v4`
-- Versão webOS do pacote: `0.8.4`
-- Build do projeto: `v0.1.0`
-- SHA-256: `eab4017bb0df446a48f176ebd84b7dd368aa4ec4547c8b0a31ae19c39dd1fbe6`
+- Versão webOS do pacote: `0.8.5`
+- Build do projeto: `v0.2.0`
+- SHA-256: `7ed51a630041a98fb3c348ca3cb8f773fadc9a1e016afeb64bb02ab7b8e0bf11`
 
-## Instalação via repositório do Homebrew Channel
+## Homebrew Channel
 
-Adicione como repositório personalizado:
+O repositório central já usado na TV permanece o mesmo:
 
-`https://raw.githubusercontent.com/PedroMarioaBros/LG-webOS-TV-Projects/main/youtube-uk6530-optimized/repo.json`
+`https://raw.githubusercontent.com/PedroMarioaBros/LG-webOS-TV-Projects/main/repo.json`
 
-O pacote utiliza o mesmo ID do YouTube AdFree upstream. Isso permite substituir/atualizar a instalação AdFree existente em vez de manter duas cópias concorrentes.
+Depois de atualizar/reabrir o Homebrew Channel, a versão 0.8.5 deverá aparecer como atualização do YouTube UK6530 0.8.4.
 
-## Instalação manual
+## O que mudou na v0.2.0
 
-O arquivo também está publicado como prerelease no GitHub:
+- build Lite agressiva;
+- painel customizado pesado do fork removido;
+- SponsorBlock removido;
+- Return YouTube Dislike removido;
+- Twemoji legado removido;
+- relógio removido;
+- miniaturas HD removidas;
+- forçador de qualidade máxima removido;
+- previews automáticos desligados;
+- categorias Jogos, Música, Esportes, Podcasts, Notícias, Filmes e Ao vivo filtradas antes da renderização;
+- Shorts removidos;
+- transições de navegação/foco zeradas;
+- adblock fixo;
+- AV1 evitado;
+- buffer traseiro mantido em 20 s.
 
-`youtube-uk6530-v0.1.0`
+## Rollback
 
-Arquivo:
-
-`YouTube-UK6530-Optimized-v0.1.0.ipk`
-
-## O que validar na TV
-
-1. iniciar o aplicativo e medir visualmente o tempo até a tela inicial;
-2. navegar por 2–3 minutos usando as setas;
-3. abrir pelo menos 10 vídeos diferentes;
-4. confirmar ausência de anúncios antes e durante os vídeos;
-5. deixar um vídeo longo rodando por pelo menos 30 minutos;
-6. voltar à tela inicial e navegar novamente;
-7. testar busca, inscrições, histórico e conta;
-8. informar qualquer travamento, congelamento, reinício do aplicativo ou atraso anormal.
-
-## Observação
-
-A v0.1.0 é uma build de teste. A compilação foi concluída e validada estruturalmente, mas a fluidez real só pode ser confirmada na UK6530PSF física.
+A v0.1.0 continua disponível no release `youtube-uk6530-v0.1.0`.
