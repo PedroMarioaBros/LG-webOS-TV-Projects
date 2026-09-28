@@ -328,7 +328,7 @@ write_text("src/pmcn-menu-filter.js", menu_filter)
 # 7) Início: neutraliza SOMENTE a expansão da prateleira em foco.
 #    Mede as fileiras recolhidas da própria aba Início e usa essa largura
 #    compacta para todas as fileiras. Sem tamanho fixo inventado.
-home_static = r\"\"\"const STYLE_ID = 'pmcn-home-no-shelf-zoom-v1';
+home_static = r"""const STYLE_ID = 'pmcn-home-no-shelf-zoom-v1';
 const CARD_SELECTOR = 'ytlr-tile-renderer, ytlr-lockup-view-model';
 
 function isHome() {
@@ -424,17 +424,13 @@ if (document.readyState === 'loading') {
 }
 
 export {};
-\"\"\"
-write_text(\"src/pmcn-home-static.js\", home_static)
+"""
+write_text("src/pmcn-home-static.js", home_static)
 
 replace_once(
-    \"src/userScript.js\",
-    \"import './yt-fixes.css';\
-\",
-    \"import './yt-fixes.css';\
-import './pmcn-menu-filter.js';\
-import './pmcn-home-static.js';\
-\"
+    "src/userScript.js",
+    "import './yt-fixes.css';\\n",
+    "import './yt-fixes.css';\\nimport './pmcn-menu-filter.js';\\nimport './pmcn-home-static.js';\\n"
 )
 # 8) Versionamento
 appinfo_path = ROOT / "assets/appinfo.json"
