@@ -325,7 +325,118 @@ export {};
 """
 write_text("src/pmcn-menu-filter.js", menu_filter)
 
-# 7) Início: neutraliza SOMENTE a expansão da prateleira em foco.\n#    Mede as fileiras recolhidas da própria aba Início e usa essa largura\n#    compacta para todas as fileiras. Sem tamanho fixo inventado.\nhome_static = r\"\"\"const STYLE_ID = 'pmcn-home-no-shelf-zoom-v1';\nconst CARD_SELECTOR = 'ytlr-tile-renderer, ytlr-lockup-view-model';\n\nfunction isHome() {\n  const href = decodeURIComponent(String(location.pathname || '') + String(location.search || '') + String(location.hash || '')).toLowerCase();\n  if (href.includes('fesubscriptions')) return false;\n  if (href.includes('fewhat_to_watch')) return true;\n  return location.hash === '' || location.hash === '#/' || location.hash === '#';\n}\n\nfunction median(values) {\n  if (!values.length) return 0;\n  const sorted = values.slice().sort((a, b) => a - b);\n  const mid = Math.floor(sorted.length / 2);\n  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);\n}\n\nfunction measureCollapsedWidth() {\n  if (!isHome()) return 0;\n  const rows = [];\n  document.querySelectorAll(CARD_SELECTOR).forEach((card) => {\n    const rect = card.getBoundingClientRect();\n    if (rect.bottom <= 0 || rect.top >= innerHeight) return;\n    const width = card.offsetWidth || 0;\n    if (width < 220 || width > 800) return;\n    const top = Math.round(rect.top / 24) * 24;\n    let row = rows.find((r) => Math.abs(r.top - top) <= 24);\n    if (!row) { row = { top, widths: [] }; rows.push(row); }\n    row.widths.push(width);\n  });\n  const widths = rows.filter((r) => r.widths.length >= 2).map((r) => median(r.widths)).filter((w) => w >= 220 && w <= 800);\n  return widths.length ? Math.min(...widths) : 0;\n}\n\nfunction ensureStyle(width) {\n  let style = document.getElementById(STYLE_ID);\n  if (!style) {\n    style = document.createElement('style');\n    style.id = STYLE_ID;\n    (document.head || document.documentElement).appendChild(style);\n  }\n  if (!width) {\n    style.textContent = '';\n    if (document.body) document.body.classList.remove('pmcn-home-no-shelf-zoom');\n    return;\n  }\n  style.textContent =\n    'body.pmcn-home-no-shelf-zoom ytlr-tile-renderer,' +\n    'body.pmcn-home-no-shelf-zoom ytlr-lockup-view-model {' +\n    'width:' + width + 'px !important;' +\n    'min-width:' + width + 'px !important;' +\n    'max-width:' + width + 'px !important;' +\n    'flex-basis:' + width + 'px !important;' +\n    'transform:none !important;' +\n    '}';\n  if (document.body) document.body.classList.add('pmcn-home-no-shelf-zoom');\n}\n\nlet learnedWidth = 0;\nlet timer = 0;\n\nfunction learnAndLock() {\n  if (!isHome()) { ensureStyle(0); return; }\n  if (document.body) document.body.classList.remove('pmcn-home-no-shelf-zoom');\n  const width = measureCollapsedWidth();\n  if (width) {\n    learnedWidth = width;\n    ensureStyle(width);\n    console.info('[PMCN Home] largura compacta medida:', width, 'px');\n  } else if (learnedWidth) {\n    ensureStyle(learnedWidth);\n  }\n}\n\nfunction scheduleLearn(delay = 180) {\n  clearTimeout(timer);\n  timer = setTimeout(learnAndLock, delay);\n}\n\nfunction start() {\n  scheduleLearn(250);\n  setTimeout(learnAndLock, 800);\n  setTimeout(learnAndLock, 1500);\n  window.addEventListener('hashchange', () => scheduleLearn(180));\n  window.addEventListener('popstate', () => scheduleLearn(180));\n  window.addEventListener('yt-navigate-finish', () => scheduleLearn(220));\n  window.addEventListener('ytaf-page-update', () => scheduleLearn(220));\n}\n\nif (document.readyState === 'loading') {\n  document.addEventListener('DOMContentLoaded', start, { once: true });\n} else {\n  start();\n}\n\nexport {};\n\"\"\"\nwrite_text(\"src/pmcn-home-static.js\", home_static)\n\nreplace_once(\n    \"src/userScript.js\",\n    \"import './yt-fixes.css';\\n\",\n    \"import './yt-fixes.css';\\nimport './pmcn-menu-filter.js';\\nimport './pmcn-home-static.js';\\n\"\n)\n# 8) Versionamento
+# 7) Início: neutraliza SOMENTE a expansão da prateleira em foco.
+#    Mede as fileiras recolhidas da própria aba Início e usa essa largura
+#    compacta para todas as fileiras. Sem tamanho fixo inventado.
+home_static = r\"\"\"const STYLE_ID = 'pmcn-home-no-shelf-zoom-v1';
+const CARD_SELECTOR = 'ytlr-tile-renderer, ytlr-lockup-view-model';
+
+function isHome() {
+  const href = decodeURIComponent(String(location.pathname || '') + String(location.search || '') + String(location.hash || '')).toLowerCase();
+  if (href.includes('fesubscriptions')) return false;
+  if (href.includes('fewhat_to_watch')) return true;
+  return location.hash === '' || location.hash === '#/' || location.hash === '#';
+}
+
+function median(values) {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+function measureCollapsedWidth() {
+  if (!isHome()) return 0;
+  const rows = [];
+  document.querySelectorAll(CARD_SELECTOR).forEach((card) => {
+    const rect = card.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= innerHeight) return;
+    const width = card.offsetWidth || 0;
+    if (width < 220 || width > 800) return;
+    const top = Math.round(rect.top / 24) * 24;
+    let row = rows.find((r) => Math.abs(r.top - top) <= 24);
+    if (!row) { row = { top, widths: [] }; rows.push(row); }
+    row.widths.push(width);
+  });
+  const widths = rows.filter((r) => r.widths.length >= 2).map((r) => median(r.widths)).filter((w) => w >= 220 && w <= 800);
+  return widths.length ? Math.min(...widths) : 0;
+}
+
+function ensureStyle(width) {
+  let style = document.getElementById(STYLE_ID);
+  if (!style) {
+    style = document.createElement('style');
+    style.id = STYLE_ID;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  if (!width) {
+    style.textContent = '';
+    if (document.body) document.body.classList.remove('pmcn-home-no-shelf-zoom');
+    return;
+  }
+  style.textContent =
+    'body.pmcn-home-no-shelf-zoom ytlr-tile-renderer,' +
+    'body.pmcn-home-no-shelf-zoom ytlr-lockup-view-model {' +
+    'width:' + width + 'px !important;' +
+    'min-width:' + width + 'px !important;' +
+    'max-width:' + width + 'px !important;' +
+    'flex-basis:' + width + 'px !important;' +
+    'transform:none !important;' +
+    '}';
+  if (document.body) document.body.classList.add('pmcn-home-no-shelf-zoom');
+}
+
+let learnedWidth = 0;
+let timer = 0;
+
+function learnAndLock() {
+  if (!isHome()) { ensureStyle(0); return; }
+  if (document.body) document.body.classList.remove('pmcn-home-no-shelf-zoom');
+  const width = measureCollapsedWidth();
+  if (width) {
+    learnedWidth = width;
+    ensureStyle(width);
+    console.info('[PMCN Home] largura compacta medida:', width, 'px');
+  } else if (learnedWidth) {
+    ensureStyle(learnedWidth);
+  }
+}
+
+function scheduleLearn(delay = 180) {
+  clearTimeout(timer);
+  timer = setTimeout(learnAndLock, delay);
+}
+
+function start() {
+  scheduleLearn(250);
+  setTimeout(learnAndLock, 800);
+  setTimeout(learnAndLock, 1500);
+  window.addEventListener('hashchange', () => scheduleLearn(180));
+  window.addEventListener('popstate', () => scheduleLearn(180));
+  window.addEventListener('yt-navigate-finish', () => scheduleLearn(220));
+  window.addEventListener('ytaf-page-update', () => scheduleLearn(220));
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', start, { once: true });
+} else {
+  start();
+}
+
+export {};
+\"\"\"
+write_text(\"src/pmcn-home-static.js\", home_static)
+
+replace_once(
+    \"src/userScript.js\",
+    \"import './yt-fixes.css';\
+\",
+    \"import './yt-fixes.css';\
+import './pmcn-menu-filter.js';\
+import './pmcn-home-static.js';\
+\"
+)
+# 8) Versionamento
 appinfo_path = ROOT / "assets/appinfo.json"
 appinfo = json.loads(appinfo_path.read_text(encoding="utf-8"))
 appinfo["version"] = "0.8.9"
@@ -346,11 +457,11 @@ require_contains("src/userScript.js", "retainBehindSecs: 20")
 require_contains("src/userScript.js", "import './pmcn-menu-filter.js';")
 require_contains("src/userScript.js", "import './pmcn-home-static.js';")
 require_contains("src/adblock.js", "normalizeUK6530NavTitle")
-require_contains("src/pmcn-card-sync.js", "pmcn-subscriptions-card-width-v1")
-require_contains("src/pmcn-card-sync.js", "offsetWidth")
-require_contains("src/pmcn-card-sync.js", "fesubscriptions")
-require_contains("src/pmcn-card-sync.js", "fewhat_to_watch")
-require_contains("src/pmcn-card-sync.js", "export {};")
+require_contains("src/pmcn-home-static.js", "pmcn-home-no-shelf-zoom-v1")
+require_contains("src/pmcn-home-static.js", "measureCollapsedWidth")
+require_contains("src/pmcn-home-static.js", "Math.min(...widths)")
+require_contains("src/pmcn-home-static.js", "transform:none !important")
+require_contains("src/pmcn-home-static.js", "export {};")
 require_contains("assets/appinfo.json", '"version": "0.8.9"')
 
 for needle in [
