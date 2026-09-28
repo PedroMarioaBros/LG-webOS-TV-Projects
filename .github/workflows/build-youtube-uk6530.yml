@@ -36,23 +36,23 @@ jobs:
           cache: npm
           cache-dependency-path: upstream/package-lock.json
 
-      - name: Apply LG UK6530 Lite profile
+      - name: Apply LG UK6530 v0.3 profile
         working-directory: upstream
         run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
 
-      - name: Verify Lite cuts
+      - name: Verify v0.3 compact UI
         working-directory: upstream
         shell: bash
         run: |
           set -euo pipefail
           grep -F "const UK6530_LITE_PROFILE" src/config.js
-          grep -F "forcePreviews: 'force_off'" src/config.js
-          grep -F "UK6530_BLOCKED_NAV_TITLES" src/adblock.js
-          grep -F "PMCN UK6530 Lite v2" src/yt-fixes.css
+          grep -F "import './pmcn-compact-ui.js';" src/userScript.js
+          grep -F "normalizeUK6530NavTitle" src/adblock.js
+          grep -F "PMCN UK6530 Lite v3" src/yt-fixes.css
+          grep -F "width: 18rem !important" src/yt-fixes.css
+          grep -F "background: transparent !important" src/yt-fixes.css
           ! grep -F "import './ui.js';" src/userScript.js
           ! grep -F "import './sponsorblock.js';" src/userScript.js
-          ! grep -F "import './emoji-font.js';" src/userScript.js
-          ! grep -F "import './watch.js';" src/userScript.js
           ! grep -F "thumbnailHookRequired" src/adblock.js
 
       - name: Install dependencies
@@ -70,15 +70,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output
-          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.5*.ipk' | head -n 1)"
+          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.6*.ipk' | head -n 1)"
           test -n "$IPK"
-          cp "$IPK" output/YouTube-UK6530-Lite-v0.2.0.ipk
-          sha256sum output/YouTube-UK6530-Lite-v0.2.0.ipk | tee output/SHA256SUMS.txt
+          cp "$IPK" output/YouTube-UK6530-Lite-v0.3.0.ipk
+          sha256sum output/YouTube-UK6530-Lite-v0.3.0.ipk | tee output/SHA256SUMS.txt
 
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-uk6530-lite-v0.2.0
+          name: youtube-uk6530-lite-v0.3.0
           path: output/
           if-no-files-found: error
           retention-days: 30
@@ -89,8 +89,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="youtube-uk6530-v0.2.0"
-          IPK="output/YouTube-UK6530-Lite-v0.2.0.ipk"
+          TAG="youtube-uk6530-v0.3.0"
+          IPK="output/YouTube-UK6530-Lite-v0.3.0.ipk"
           SUMS="output/SHA256SUMS.txt"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
@@ -98,7 +98,7 @@ jobs:
             gh release create "$TAG" "$IPK" "$SUMS" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "YouTube UK6530 Lite v0.2.0" \
+              --title "YouTube UK6530 Lite v0.3.0" \
               --prerelease \
-              --notes "Build Lite agressiva para LG UK6530PSF/webOS 4: adblock fixo, UI/shortcuts/SponsorBlock/RYD/emoji/clock/thumbnail-HD fora do bundle, previews desligados, AV1 evitado, categorias extras removidas antes da renderização e transições de navegação zeradas."
+              --notes "v0.3: layout compacto inspirado em Inscrições, remoção robusta das categorias extras do menu, retirada das camadas pretas/gradientes do fork, mantendo thumbnails leves, adblock fixo, AV1 evitado e buffer de 20 s."
           fi
