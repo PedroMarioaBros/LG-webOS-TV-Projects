@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
-PMCN YouTube UK6530 v0.3.1 — correção de interface.
+PMCN YouTube UK6530 v0.3.2 — layout adaptativo pela aba Inscrições.
 
-Base: perfil Lite.
-Mantém somente a melhoria que funcionou na v0.3:
-- remoção robusta das categorias laterais não usadas.
-
-Reverte:
-- compactação global de cartões (volta ao layout original do YouTube).
-
-Corrige:
-- remove fundo/tarja escura de metadata/textos do player;
-- mantém adblock fixo, thumbnails leves originais, AV1 evitado e buffer de 20 s.
+Base: v0.3.1.
+- mantém o layout original do YouTube por padrão;
+- mede a largura REAL dos cards da aba Inscrições na própria TV;
+- salva essa largura localmente;
+- usa exatamente essa largura apenas nos cards da aba Início;
+- não fixa 18rem nem inventa uma dimensão;
+- mantém menu lateral enxuto, adblock, thumbnails leves, AV1 evitado e buffer de 20 s.
 """
 
 from pathlib import Path
@@ -54,7 +51,7 @@ def require_absent(path: str, needle: str) -> None:
 profile_marker = "let localConfig = Object.assign({}, defaultConfig, loadStoredConfig() || {});"
 profile_block = profile_marker + r"""
 
-// PMCN UK6530 LITE v3.1 -----------------------------------------------------
+// PMCN UK6530 LITE v3.2 -----------------------------------------------------
 const UK6530_LITE_PROFILE = {
   enableAdBlock: true,
   enableTrackingBlock: false,
@@ -78,7 +75,7 @@ const UK6530_LITE_PROFILE = {
 Object.assign(localConfig, UK6530_LITE_PROFILE);
 try {
   window.localStorage.setItem(CONFIG_KEY, JSON.stringify(localConfig));
-  window.localStorage.setItem('pmcn-uk6530-profile', 'lite-v3.1');
+  window.localStorage.setItem('pmcn-uk6530-profile', 'lite-v3.2');
 } catch {}
 """
 replace_once("src/config.js", profile_marker, profile_block)
@@ -173,8 +170,7 @@ lite_nav = r"""  const uk6530Title =
 """ + insert_point
 replace_once("src/adblock.js", insert_point, lite_nav)
 
-# 5) CSS — layout original; somente zero de animações + limpeza do player.
-# Troca o gradiente do fork por transparência.
+# 5) CSS base — sem tamanho fixo de card.
 replace_once(
     "src/yt-fixes.css",
     """.ytLrWatchDefaultShadow,
@@ -203,7 +199,8 @@ replace_once(
 )
 
 append_text("src/yt-fixes.css", r"""
-/* PMCN UK6530 v3.1: layout nativo preservado; apenas remove efeitos extras. */
+/* PMCN UK6530 v3.2: layout nativo por padrão; tamanho da Início vem da
+   medição real feita na aba Inscrições pela própria TV. */
 html,
 body,
 ytlr-app {
@@ -232,7 +229,6 @@ yt-focus-container,
   scroll-behavior: auto !important;
 }
 
-/* Remove as tarjas/fundos de metadata no player. */
 html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata[idomkey='metadata'],
 html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata,
 html body.WEB_PAGE_TYPE_WATCH [idomkey='metadata'],
@@ -246,7 +242,7 @@ html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefault2025Shadow {
 }
 """)
 
-# 6) DOM guard apenas para menu lateral. Sem mexer no tamanho/layout dos cards.
+# 6) Menu lateral: DOM guard barato
 menu_filter = r"""const BLOCKED = new Set([
   'jogos','games','gaming','musica','music','esportes','sports',
   'podcast','podcasts','noticias','news','filmes','movies','movies & tv',
@@ -300,28 +296,7 @@ function schedule(root) {
   });
 }
 
-function injectLateWatchStyle() {
-  if (document.getElementById('pmcn-watch-clean-v31')) return;
-  const style = document.createElement('style');
-  style.id = 'pmcn-watch-clean-v31';
-  style.textContent = `
-    html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata[idomkey="metadata"],
-    html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata,
-    html body.WEB_PAGE_TYPE_WATCH [idomkey="metadata"],
-    html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefaultShadow,
-    html body.WEB_PAGE_TYPE_WATCH [idomkey="shadow"],
-    html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefault2025Shadow {
-      background: transparent !important;
-      background-color: transparent !important;
-      background-image: none !important;
-      box-shadow: none !important;
-    }
-  `;
-  (document.head || document.documentElement).appendChild(style);
-}
-
 function start() {
-  injectLateWatchStyle();
   hideBlocked(document);
   const host = document.querySelector('ytlr-app') || document.body || document.documentElement;
   if (!host) return;
@@ -336,14 +311,8 @@ function start() {
     }
   });
   observer.observe(host, { childList: true, subtree: true });
-  window.addEventListener('yt-navigate-finish', () => {
-    injectLateWatchStyle();
-    schedule(document);
-  });
-  window.addEventListener('ytaf-page-update', () => {
-    injectLateWatchStyle();
-    schedule(document);
-  });
+  window.addEventListener('yt-navigate-finish', () => schedule(document));
+  window.addEventListener('ytaf-page-update', () => schedule(document));
 }
 
 if (document.readyState === 'loading') {
@@ -353,35 +322,162 @@ if (document.readyState === 'loading') {
 }
 """
 write_text("src/pmcn-menu-filter.js", menu_filter)
+
+# 7) Sincronizador adaptativo: mede Inscrições e aplica só na Início.
+card_sync = r"""const STORAGE_KEY = 'pmcn-subscriptions-card-width-v1';
+const STYLE_ID = 'pmcn-home-card-sync-v1';
+const CARD_SELECTOR = 'ytlr-tile-renderer, ytlr-lockup-view-model';
+
+function routeKind() {
+  const href = decodeURIComponent(String(location.pathname || '') + String(location.search || '') + String(location.hash || '')).toLowerCase();
+  if (href.includes('fesubscriptions')) return 'subscriptions';
+  if (href.includes('fewhat_to_watch')) return 'home';
+  if (location.hash === '' || location.hash === '#/' || location.hash === '#') return 'home';
+  return 'other';
+}
+
+function median(values) {
+  if (!values.length) return 0;
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 ? values[mid] : Math.round((values[mid - 1] + values[mid]) / 2);
+}
+
+function visibleCards() {
+  const out = [];
+  document.querySelectorAll(CARD_SELECTOR).forEach((el) => {
+    const r = el.getBoundingClientRect();
+    const w = el.offsetWidth || Math.round(r.width);
+    if (w < 240 || w > 700) return;
+    if (r.bottom <= 0 || r.top >= innerHeight) return;
+    out.push({ el, w, top: r.top });
+  });
+  return out;
+}
+
+function measureSubscriptions() {
+  if (routeKind() !== 'subscriptions') return false;
+  const cards = visibleCards();
+  if (cards.length < 2) return false;
+
+  // Usa a primeira fileira visível e a mediana para ignorar o card focado,
+  // que pode estar ampliado por transform.
+  const firstTop = Math.min(...cards.map((c) => c.top));
+  const firstRow = cards.filter((c) => Math.abs(c.top - firstTop) < 80).slice(0, 8);
+  const width = median(firstRow.map((c) => c.w));
+  if (width < 240 || width > 700) return false;
+
+  try {
+    localStorage.setItem(STORAGE_KEY, String(width));
+    console.info('[PMCN CardSync] Largura de Inscrições medida:', width, 'px');
+  } catch {}
+  return true;
+}
+
+function getMeasuredWidth() {
+  try {
+    const width = Number(localStorage.getItem(STORAGE_KEY));
+    if (width >= 240 && width <= 700) return Math.round(width);
+  } catch {}
+  return 0;
+}
+
+function ensureStyle(width) {
+  let style = document.getElementById(STYLE_ID);
+  if (!style) {
+    style = document.createElement('style');
+    style.id = STYLE_ID;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  style.textContent = width ? `
+    body.pmcn-home-subscription-size ytlr-tile-renderer,
+    body.pmcn-home-subscription-size ytlr-lockup-view-model {
+      width: ${width}px !important;
+      min-width: ${width}px !important;
+      max-width: ${width}px !important;
+      flex-basis: ${width}px !important;
+    }
+  ` : '';
+}
+
+function applyRoute() {
+  const kind = routeKind();
+
+  if (kind === 'subscriptions') {
+    document.body && document.body.classList.remove('pmcn-home-subscription-size');
+    ensureStyle(0);
+    // Duas tentativas: primeira renderização e depois que a fileira estabiliza.
+    setTimeout(measureSubscriptions, 250);
+    setTimeout(measureSubscriptions, 900);
+    return;
+  }
+
+  if (kind === 'home') {
+    const width = getMeasuredWidth();
+    if (width && document.body) {
+      ensureStyle(width);
+      document.body.classList.add('pmcn-home-subscription-size');
+      console.info('[PMCN CardSync] Início usando largura medida em Inscrições:', width, 'px');
+    }
+    return;
+  }
+
+  document.body && document.body.classList.remove('pmcn-home-subscription-size');
+  ensureStyle(0);
+}
+
+let routeTimer = 0;
+function scheduleRouteApply() {
+  clearTimeout(routeTimer);
+  routeTimer = setTimeout(applyRoute, 100);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', applyRoute, { once: true });
+} else {
+  applyRoute();
+}
+
+window.addEventListener('hashchange', scheduleRouteApply);
+window.addEventListener('popstate', scheduleRouteApply);
+window.addEventListener('yt-navigate-finish', scheduleRouteApply);
+window.addEventListener('ytaf-page-update', scheduleRouteApply);
+"""
+write_text("src/pmcn-card-sync.js", card_sync)
+
 replace_once(
     "src/userScript.js",
     "import './yt-fixes.css';\n",
-    "import './yt-fixes.css';\nimport './pmcn-menu-filter.js';\n"
+    "import './yt-fixes.css';\nimport './pmcn-menu-filter.js';\nimport './pmcn-card-sync.js';\n"
 )
 
-# 7) Versionamento
+# 8) Versionamento
 appinfo_path = ROOT / "assets/appinfo.json"
 appinfo = json.loads(appinfo_path.read_text(encoding="utf-8"))
-appinfo["version"] = "0.8.7"
+appinfo["version"] = "0.8.8"
 appinfo["title"] = "YouTube UK6530"
 appinfo["vendor"] = "PMCN / webosbrew.org"
 appinfo_path.write_text(json.dumps(appinfo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 pkg_path = ROOT / "package.json"
 pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-pkg["version"] = "0.8.7"
+pkg["version"] = "0.8.8"
 pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-# 8) Validação
+# 9) Validação
 require_contains("src/config.js", "const UK6530_LITE_PROFILE")
 require_contains("src/config.js", "enableAdBlock: true")
 require_contains("src/config.js", "upgradeThumbnails: false")
 require_contains("src/userScript.js", "retainBehindSecs: 20")
 require_contains("src/userScript.js", "import './pmcn-menu-filter.js';")
+require_contains("src/userScript.js", "import './pmcn-card-sync.js';")
 require_contains("src/adblock.js", "normalizeUK6530NavTitle")
-require_contains("src/yt-fixes.css", "layout nativo preservado")
-require_contains("src/yt-fixes.css", "ytlr-watch-metadata")
-require_contains("assets/appinfo.json", '"version": "0.8.7"')
+require_contains("src/pmcn-card-sync.js", "pmcn-subscriptions-card-width-v1")
+require_contains("src/pmcn-card-sync.js", "offsetWidth")
+require_contains("src/pmcn-card-sync.js", "fesubscriptions")
+require_contains("src/pmcn-card-sync.js", "fewhat_to_watch")
+require_contains("assets/appinfo.json", '"version": "0.8.8"')
 
 for needle in [
     "import './ui.js';",
@@ -394,6 +490,5 @@ for needle in [
 require_absent("src/adblock.js", "thumbnailHookRequired")
 require_absent("src/adblock.js", "upgradeResponseThumbnails")
 require_absent("src/yt-fixes.css", "width: 18rem !important")
-require_absent("src/yt-fixes.css", "flex: 0 0 18rem")
 
-print("PMCN UK6530 Lite v0.3.1 aplicado com sucesso.")
+print("PMCN UK6530 Lite v0.3.2 aplicado com sucesso.")
