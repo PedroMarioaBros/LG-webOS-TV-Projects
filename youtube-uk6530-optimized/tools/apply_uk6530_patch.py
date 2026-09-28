@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-PMCN YouTube UK6530 v0.3.0 — interface compacta para LG UK6530PSF/webOS 4.
+PMCN YouTube UK6530 v0.3.1 — correção de interface.
 
-Base: perfil Lite v0.2.0.
-Novidades:
-- cartões compactos (~18rem) em todas as grades/prateleiras de vídeo;
-- remoção robusta das categorias Jogos/Música/Esportes/Podcasts/Notícias/Filmes/Ao vivo;
-- retirada dos gradientes/camadas pretas adicionados pelo fork;
-- mantém thumbnails originais/leves do YouTube (sem Max Thumbnail Quality);
-- preserva adblock fixo, AV1 evitado e buffer traseiro de 20 s.
+Base: perfil Lite.
+Mantém somente a melhoria que funcionou na v0.3:
+- remoção robusta das categorias laterais não usadas.
+
+Reverte:
+- compactação global de cartões (volta ao layout original do YouTube).
+
+Corrige:
+- remove fundo/tarja escura de metadata/textos do player;
+- mantém adblock fixo, thumbnails leves originais, AV1 evitado e buffer de 20 s.
 """
 
 from pathlib import Path
@@ -35,8 +38,7 @@ def append_text(path: str, text: str) -> None:
     p.write_text(data.rstrip() + "\n\n" + text.strip() + "\n", encoding="utf-8")
 
 def write_text(path: str, text: str) -> None:
-    p = ROOT / path
-    p.write_text(text, encoding="utf-8")
+    (ROOT / path).write_text(text, encoding="utf-8")
 
 def require_contains(path: str, needle: str) -> None:
     data = (ROOT / path).read_text(encoding="utf-8")
@@ -48,14 +50,11 @@ def require_absent(path: str, needle: str) -> None:
     if needle in data:
         raise RuntimeError(f"{path}: validação falhou; trecho ainda presente: {needle}")
 
-# ---------------------------------------------------------------------------
 # 1) Perfil fixo Lite
-# ---------------------------------------------------------------------------
-
 profile_marker = "let localConfig = Object.assign({}, defaultConfig, loadStoredConfig() || {});"
 profile_block = profile_marker + r"""
 
-// PMCN UK6530 LITE v3 -------------------------------------------------------
+// PMCN UK6530 LITE v3.1 -----------------------------------------------------
 const UK6530_LITE_PROFILE = {
   enableAdBlock: true,
   enableTrackingBlock: false,
@@ -79,10 +78,8 @@ const UK6530_LITE_PROFILE = {
 Object.assign(localConfig, UK6530_LITE_PROFILE);
 try {
   window.localStorage.setItem(CONFIG_KEY, JSON.stringify(localConfig));
-  window.localStorage.setItem('pmcn-uk6530-profile', 'lite-v3');
-} catch {
-  // Storage failure must never stop YouTube from launching.
-}
+  window.localStorage.setItem('pmcn-uk6530-profile', 'lite-v3.1');
+} catch {}
 """
 replace_once("src/config.js", profile_marker, profile_block)
 
@@ -92,10 +89,7 @@ replace_once(
     "export function configWrite(key, value) {\n  if (!configExists(key)) throw new Error('tried to write unknown config key: ' + key);\n  if (key === 'enableAdBlock') value = true;"
 )
 
-# ---------------------------------------------------------------------------
 # 2) Cortes do bundle Lite
-# ---------------------------------------------------------------------------
-
 for line in [
     "import './ui.js'; // Registers the green-key handler, options panel, video-quality, global styles\n",
     "import './sponsorblock.js';\n",
@@ -110,10 +104,7 @@ replace_once(
     "initBufferLimit({ retainBehindSecs: 20, minTrimSecs: 10, trimIntervalMs: 5000 });\n\tconsole.info('Initiating UK6530 Lite buffer limit');"
 )
 
-# ---------------------------------------------------------------------------
-# 3) Sem motor pesado de miniaturas HD
-# ---------------------------------------------------------------------------
-
+# 3) Sem Max Thumbnail Quality
 remove_once(
     "src/adblock.js",
     "import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';\n"
@@ -128,10 +119,7 @@ replace_once(
     "    cfgEmojiFixEffective\n"
 )
 
-# ---------------------------------------------------------------------------
-# 4) Filtro JSON de navegação (primeira barreira)
-# ---------------------------------------------------------------------------
-
+# 4) Filtro JSON robusto de navegação
 ui_strings_end = """const UI_STRINGS = {
   SHORTS_TITLE: 'Shorts',
   TOP_LIVE_GAMES_TITLE: 'Top live games',
@@ -185,11 +173,8 @@ lite_nav = r"""  const uk6530Title =
 """ + insert_point
 replace_once("src/adblock.js", insert_point, lite_nav)
 
-# ---------------------------------------------------------------------------
-# 5) CSS: zero animações cosméticas + cards compactos + sem overlay preto
-# ---------------------------------------------------------------------------
-
-# Neutraliza o gradiente/camada escura que o fork adiciona ao player.
+# 5) CSS — layout original; somente zero de animações + limpeza do player.
+# Troca o gradiente do fork por transparência.
 replace_once(
     "src/yt-fixes.css",
     """.ytLrWatchDefaultShadow,
@@ -218,27 +203,11 @@ replace_once(
 )
 
 append_text("src/yt-fixes.css", r"""
-/* PMCN UK6530 Lite v3 -------------------------------------------------------
-   Layout compacto inspirado na aba Inscrições: preserva as miniaturas leves
-   fornecidas pelo YouTube e reduz a ampliação visual que evidenciava pixelização. */
+/* PMCN UK6530 v3.1: layout nativo preservado; apenas remove efeitos extras. */
 html,
 body,
 ytlr-app {
   scroll-behavior: auto !important;
-}
-
-ytlr-tile-renderer,
-ytlr-lockup-view-model {
-  width: 18rem !important;
-  min-width: 18rem !important;
-  max-width: 18rem !important;
-  flex: 0 0 18rem !important;
-}
-
-ytlr-tile-renderer ytlr-tile-header-renderer,
-ytlr-lockup-view-model ytlr-tile-header-renderer {
-  width: 100% !important;
-  max-width: 100% !important;
 }
 
 ytlr-tile-renderer,
@@ -262,14 +231,23 @@ yt-focus-container,
   transition-delay: 0s !important;
   scroll-behavior: auto !important;
 }
+
+/* Remove as tarjas/fundos de metadata no player. */
+html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata[idomkey='metadata'],
+html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata,
+html body.WEB_PAGE_TYPE_WATCH [idomkey='metadata'],
+html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefaultShadow,
+html body.WEB_PAGE_TYPE_WATCH [idomkey='shadow'],
+html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefault2025Shadow {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
 """)
 
-# ---------------------------------------------------------------------------
-# 6) DOM guard: segunda barreira para o menu lateral.
-#    É childList-only e não mede layout, para não criar jank.
-# ---------------------------------------------------------------------------
-
-pmcn_ui = r"""const BLOCKED = new Set([
+# 6) DOM guard apenas para menu lateral. Sem mexer no tamanho/layout dos cards.
+menu_filter = r"""const BLOCKED = new Set([
   'jogos','games','gaming','musica','music','esportes','sports',
   'podcast','podcasts','noticias','news','filmes','movies','movies & tv',
   'ao vivo','live'
@@ -288,7 +266,7 @@ function labelOf(el) {
 }
 
 function hideBlocked(root) {
-  if (!root || root.nodeType !== 1 && root !== document) return;
+  if (!root || (root.nodeType !== 1 && root !== document)) return;
   const selector = [
     'ytlr-guide-entry-renderer',
     'ytlr-navigation-item-renderer',
@@ -303,8 +281,7 @@ function hideBlocked(root) {
   if (root.querySelectorAll) root.querySelectorAll(selector).forEach((n) => nodes.push(n));
 
   for (const el of nodes) {
-    const label = labelOf(el);
-    if (BLOCKED.has(label)) {
+    if (BLOCKED.has(labelOf(el))) {
       el.hidden = true;
       el.setAttribute('aria-hidden', 'true');
       el.setAttribute('tabindex', '-1');
@@ -323,7 +300,28 @@ function schedule(root) {
   });
 }
 
+function injectLateWatchStyle() {
+  if (document.getElementById('pmcn-watch-clean-v31')) return;
+  const style = document.createElement('style');
+  style.id = 'pmcn-watch-clean-v31';
+  style.textContent = `
+    html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata[idomkey="metadata"],
+    html body.WEB_PAGE_TYPE_WATCH ytlr-watch-metadata,
+    html body.WEB_PAGE_TYPE_WATCH [idomkey="metadata"],
+    html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefaultShadow,
+    html body.WEB_PAGE_TYPE_WATCH [idomkey="shadow"],
+    html body.WEB_PAGE_TYPE_WATCH .ytLrWatchDefault2025Shadow {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+      box-shadow: none !important;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+}
+
 function start() {
+  injectLateWatchStyle();
   hideBlocked(document);
   const host = document.querySelector('ytlr-app') || document.body || document.documentElement;
   if (!host) return;
@@ -338,8 +336,14 @@ function start() {
     }
   });
   observer.observe(host, { childList: true, subtree: true });
-  window.addEventListener('yt-navigate-finish', () => schedule(document));
-  window.addEventListener('ytaf-page-update', () => schedule(document));
+  window.addEventListener('yt-navigate-finish', () => {
+    injectLateWatchStyle();
+    schedule(document);
+  });
+  window.addEventListener('ytaf-page-update', () => {
+    injectLateWatchStyle();
+    schedule(document);
+  });
 }
 
 if (document.readyState === 'loading') {
@@ -348,45 +352,36 @@ if (document.readyState === 'loading') {
   start();
 }
 """
-write_text("src/pmcn-compact-ui.js", pmcn_ui)
-
+write_text("src/pmcn-menu-filter.js", menu_filter)
 replace_once(
     "src/userScript.js",
     "import './yt-fixes.css';\n",
-    "import './yt-fixes.css';\nimport './pmcn-compact-ui.js';\n"
+    "import './yt-fixes.css';\nimport './pmcn-menu-filter.js';\n"
 )
 
-# ---------------------------------------------------------------------------
 # 7) Versionamento
-# ---------------------------------------------------------------------------
-
 appinfo_path = ROOT / "assets/appinfo.json"
 appinfo = json.loads(appinfo_path.read_text(encoding="utf-8"))
-appinfo["version"] = "0.8.6"
+appinfo["version"] = "0.8.7"
 appinfo["title"] = "YouTube UK6530"
 appinfo["vendor"] = "PMCN / webosbrew.org"
 appinfo_path.write_text(json.dumps(appinfo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 pkg_path = ROOT / "package.json"
 pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-pkg["version"] = "0.8.6"
+pkg["version"] = "0.8.7"
 pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-# ---------------------------------------------------------------------------
-# 8) Fail-fast
-# ---------------------------------------------------------------------------
-
+# 8) Validação
 require_contains("src/config.js", "const UK6530_LITE_PROFILE")
 require_contains("src/config.js", "enableAdBlock: true")
-require_contains("src/config.js", "forceVideoCodec: 'no_av1'")
 require_contains("src/config.js", "upgradeThumbnails: false")
 require_contains("src/userScript.js", "retainBehindSecs: 20")
-require_contains("src/userScript.js", "import './pmcn-compact-ui.js';")
+require_contains("src/userScript.js", "import './pmcn-menu-filter.js';")
 require_contains("src/adblock.js", "normalizeUK6530NavTitle")
-require_contains("src/yt-fixes.css", "PMCN UK6530 Lite v3")
-require_contains("src/yt-fixes.css", "width: 18rem !important")
-require_contains("src/yt-fixes.css", "background: transparent !important")
-require_contains("assets/appinfo.json", '"version": "0.8.6"')
+require_contains("src/yt-fixes.css", "layout nativo preservado")
+require_contains("src/yt-fixes.css", "ytlr-watch-metadata")
+require_contains("assets/appinfo.json", '"version": "0.8.7"')
 
 for needle in [
     "import './ui.js';",
@@ -398,5 +393,7 @@ for needle in [
 
 require_absent("src/adblock.js", "thumbnailHookRequired")
 require_absent("src/adblock.js", "upgradeResponseThumbnails")
+require_absent("src/yt-fixes.css", "width: 18rem !important")
+require_absent("src/yt-fixes.css", "flex: 0 0 18rem")
 
-print("PMCN UK6530 Lite v0.3.0 aplicado com sucesso.")
+print("PMCN UK6530 Lite v0.3.1 aplicado com sucesso.")
