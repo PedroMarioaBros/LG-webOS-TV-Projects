@@ -1,0 +1,80 @@
+name: Build YouTube UK6530 Optimized
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "youtube-uk6530-optimized/**"
+      - ".github/workflows/build-youtube-uk6530.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout pinned upstream
+        uses: actions/checkout@v4
+        with:
+          repository: NicholasBly/youtube-webos
+          ref: 5f7aa18fa0829b4e0607475222d5adacd85c6eff
+          path: upstream
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - name: Apply LG UK6530 performance profile
+        working-directory: upstream
+        run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
+
+      - name: Verify critical ad-free/performance settings
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "localConfig.enableAdBlock = true;" src/config.js
+          grep -F "if (key === 'enableAdBlock') value = true;" src/config.js
+          grep -F "default: 'no_av1'" src/config.js
+          grep -F "retainBehindSecs: 20" src/userScript.js
+          ! grep -F "import './return-dislike.js';" src/ui.js
+
+      - name: Install dependencies
+        working-directory: upstream
+        run: npm ci
+
+      - name: Build legacy webOS package
+        working-directory: upstream
+        run: |
+          npm run build
+          npm run package
+
+      - name: Prepare IPK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.4*.ipk' | head -n 1)"
+          test -n "$IPK"
+          cp "$IPK" output/YouTube-UK6530-Optimized-v0.1.0.ipk
+          sha256sum output/YouTube-UK6530-Optimized-v0.1.0.ipk | tee output/SHA256SUMS.txt
+
+      - name: Upload test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-uk6530-optimized-v0.1.0
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
