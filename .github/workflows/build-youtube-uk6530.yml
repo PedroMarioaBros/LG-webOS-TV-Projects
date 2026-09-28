@@ -36,23 +36,23 @@ jobs:
           cache: npm
           cache-dependency-path: upstream/package-lock.json
 
-      - name: Apply LG UK6530 v0.3.1 profile
+      - name: Apply LG UK6530 v0.3.2 profile
         working-directory: upstream
         run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
 
-      - name: Verify v0.3.1
+      - name: Verify v0.3.2 adaptive card sync
         working-directory: upstream
         shell: bash
         run: |
           set -euo pipefail
-          grep -F "import './pmcn-menu-filter.js';" src/userScript.js
-          grep -F "normalizeUK6530NavTitle" src/adblock.js
-          grep -F "layout nativo preservado" src/yt-fixes.css
-          grep -F "ytlr-watch-metadata" src/yt-fixes.css
+          grep -F "import './pmcn-card-sync.js';" src/userScript.js
+          grep -F "pmcn-subscriptions-card-width-v1" src/pmcn-card-sync.js
+          grep -F "offsetWidth" src/pmcn-card-sync.js
+          grep -F "fesubscriptions" src/pmcn-card-sync.js
+          grep -F "fewhat_to_watch" src/pmcn-card-sync.js
           ! grep -F "width: 18rem !important" src/yt-fixes.css
           ! grep -F "import './ui.js';" src/userScript.js
           ! grep -F "import './sponsorblock.js';" src/userScript.js
-          ! grep -F "thumbnailHookRequired" src/adblock.js
 
       - name: Install dependencies
         working-directory: upstream
@@ -69,15 +69,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output
-          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.7*.ipk' | head -n 1)"
+          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.8*.ipk' | head -n 1)"
           test -n "$IPK"
-          cp "$IPK" output/YouTube-UK6530-Lite-v0.3.1.ipk
-          sha256sum output/YouTube-UK6530-Lite-v0.3.1.ipk | tee output/SHA256SUMS.txt
+          cp "$IPK" output/YouTube-UK6530-Lite-v0.3.2.ipk
+          sha256sum output/YouTube-UK6530-Lite-v0.3.2.ipk | tee output/SHA256SUMS.txt
 
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-uk6530-lite-v0.3.1
+          name: youtube-uk6530-lite-v0.3.2
           path: output/
           if-no-files-found: error
           retention-days: 30
@@ -88,8 +88,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="youtube-uk6530-v0.3.1"
-          IPK="output/YouTube-UK6530-Lite-v0.3.1.ipk"
+          TAG="youtube-uk6530-v0.3.2"
+          IPK="output/YouTube-UK6530-Lite-v0.3.2.ipk"
           SUMS="output/SHA256SUMS.txt"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
@@ -97,7 +97,7 @@ jobs:
             gh release create "$TAG" "$IPK" "$SUMS" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "YouTube UK6530 Lite v0.3.1" \
+              --title "YouTube UK6530 Lite v0.3.2" \
               --prerelease \
-              --notes "Hotfix: restaura integralmente o layout original dos cards, mantém somente a remoção robusta dos menus laterais extras e reforça a remoção de tarjas/camadas escuras da metadata do player."
+              --notes "Layout adaptativo: mede a largura real dos cards da aba Inscrições na própria TV e usa exatamente essa largura na aba Início. Sem dimensão fixa inventada."
           fi
