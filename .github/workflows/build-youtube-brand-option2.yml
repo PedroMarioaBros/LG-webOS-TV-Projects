@@ -1,0 +1,209 @@
+name: Build YouTube UK6530 Branding Option 2
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-brand-option2.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact approved 0.8.8 base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir restored
+          gh run download 36463105907             --repo "$GITHUB_REPOSITORY"             --name youtube-uk6530-lite-v0.3.2             --dir restored
+          echo "45d4c7e5f041d2d2f21cae4cb87a42e193fe69033d965a5dd571e3feddf9ff00  restored/YouTube-UK6530-Lite-v0.3.2.ipk" | sha256sum -c -
+
+      - name: Extract application
+        run: |
+          set -euo pipefail
+          mkdir raw app app_orig
+          cd raw
+          ar x ../restored/YouTube-UK6530-Lite-v0.3.2.ipk
+          tar -xzf data.tar.gz
+          cp -a usr/palm/applications/youtube.leanback.v4/. ../app/
+          cp -a usr/palm/applications/youtube.leanback.v4/. ../app_orig/
+
+      - name: Generate selected Option 2 artwork
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          from pathlib import Path
+          import json
+
+          APP = Path("app")
+          BG = (24, 27, 31, 255)
+          RED = (255, 0, 30, 255)
+          WHITE = (255, 255, 255, 255)
+          FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          def make_icon(size, path):
+              im = Image.new("RGBA", (size, size), BG)
+              d = ImageDraw.Draw(im)
+              bw = round(size * 0.82)
+              bh = round(size * 0.55)
+              x = (size - bw) // 2
+              y = (size - bh) // 2
+              radius = max(4, round(min(bw, bh) * 0.18))
+              d.rounded_rectangle((x, y, x+bw, y+bh), radius=radius, fill=RED)
+
+              tri_w = round(bh * 0.34)
+              tri_h = round(bh * 0.42)
+              cx = size // 2 + round(bh * 0.03)
+              cy = size // 2
+              d.polygon([
+                  (cx-tri_w//2, cy-tri_h//2),
+                  (cx-tri_w//2, cy+tri_h//2),
+                  (cx+tri_w//2, cy)
+              ], fill=WHITE)
+              im.save(path, optimize=True)
+
+          def make_wide(path):
+              W, H = 1920, 1080
+              im = Image.new("RGBA", (W, H), BG)
+              d = ImageDraw.Draw(im)
+
+              # Opção 2 escolhida: símbolo original do YouTube grande e texto abaixo.
+              bw, bh = 900, 510
+              x = (W - bw) // 2
+              y = 100
+              d.rounded_rectangle((x, y, x+bw, y+bh), radius=90, fill=RED)
+
+              tri_w, tri_h = 220, 260
+              cx = W // 2 + 35
+              cy = y + bh // 2
+              d.polygon([
+                  (cx-tri_w//2, cy-tri_h//2),
+                  (cx-tri_w//2, cy+tri_h//2),
+                  (cx+tri_w//2, cy)
+              ], fill=WHITE)
+
+              font = ImageFont.truetype(FONT, 112)
+              text = "YouTube UK6530"
+              box = d.textbbox((0, 0), text, font=font)
+              tw = box[2] - box[0]
+              d.text(((W-tw)//2, 730), text, font=font, fill=WHITE)
+
+              im.save(path, optimize=True)
+
+          make_icon(80, APP / "icon.png")
+          make_icon(130, APP / "largeIcon.png")
+
+          wide_targets = [
+              "9262051282473701_youtube_leanback_preview.png",
+              "9262051307371701_youtube_leanback_splash.png",
+              "imageForRecents.png",
+          ]
+          for name in wide_targets:
+              make_wide(APP / name)
+
+          appinfo = APP / "appinfo.json"
+          obj = json.loads(appinfo.read_text(encoding="utf-8"))
+          obj["version"] = "0.8.11"
+          obj["imageForRecents"] = "imageForRecents.png"
+          appinfo.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          # Validate expected dimensions.
+          expected = {
+              "icon.png": (80, 80),
+              "largeIcon.png": (130, 130),
+              "9262051282473701_youtube_leanback_preview.png": (1920, 1080),
+              "9262051307371701_youtube_leanback_splash.png": (1920, 1080),
+              "imageForRecents.png": (1920, 1080),
+          }
+          for name, dims in expected.items():
+              assert Image.open(APP / name).size == dims, (name, Image.open(APP/name).size)
+
+          assert obj["id"] == "youtube.leanback.v4"
+          assert obj["version"] == "0.8.11"
+          assert obj["imageForRecents"] == "imageForRecents.png"
+          PY
+
+      - name: Prove runtime is unchanged from approved 0.8.8
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          OLD = Path("app_orig")
+          NEW = Path("app")
+          allowed = {
+              "appinfo.json",
+              "icon.png",
+              "largeIcon.png",
+              "9262051282473701_youtube_leanback_preview.png",
+              "9262051307371701_youtube_leanback_splash.png",
+              "imageForRecents.png",
+          }
+
+          def digest(path):
+              h = hashlib.sha256()
+              h.update(path.read_bytes())
+              return h.hexdigest()
+
+          old_files = {p.relative_to(OLD).as_posix(): p for p in OLD.rglob("*") if p.is_file()}
+          new_files = {p.relative_to(NEW).as_posix(): p for p in NEW.rglob("*") if p.is_file()}
+
+          for rel, p in old_files.items():
+              if rel in allowed:
+                  continue
+              assert rel in new_files, f"Arquivo removido indevidamente: {rel}"
+              assert digest(p) == digest(new_files[rel]), f"Runtime alterado indevidamente: {rel}"
+
+          extras = set(new_files) - set(old_files)
+          assert extras <= {"imageForRecents.png"}, f"Arquivos extras inesperados: {extras}"
+          print("Runtime 0.8.8 preservado byte a byte fora dos assets e appinfo.json.")
+          PY
+
+      - name: Package with official webOS CLI
+        run: |
+          set -euo pipefail
+          npm install -g @webos-tools/cli@3.2.6
+          mkdir output
+          ares-package app -o output
+          IPK="$(find output -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.11*.ipk' | head -n 1)"
+          test -n "$IPK"
+          mv "$IPK" output/YouTube-UK6530-Lite-v0.8.11-LogoOption2.ipk
+
+      - name: Verify final package
+        run: |
+          set -euo pipefail
+          rm -rf verify && mkdir verify
+          cd verify
+          ar x ../output/YouTube-UK6530-Lite-v0.8.11-LogoOption2.ipk
+          mkdir data
+          tar -xzf data.tar.gz -C data
+          APP="data/usr/palm/applications/youtube.leanback.v4"
+          grep -F '"version": "0.8.11"' "$APP/appinfo.json"
+          grep -F '"imageForRecents": "imageForRecents.png"' "$APP/appinfo.json"
+          test -f "$APP/icon.png"
+          test -f "$APP/largeIcon.png"
+          test -f "$APP/imageForRecents.png"
+
+      - name: Publish visual-only release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum output/YouTube-UK6530-Lite-v0.8.11-LogoOption2.ipk | tee output/SHA256SUMS.txt
+          TAG="youtube-uk6530-v0.3.2-logo-option2"
+          IPK="output/YouTube-UK6530-Lite-v0.8.11-LogoOption2.ipk"
+          SUMS="output/SHA256SUMS.txt"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 0.8.11 - Logo Opção 2"               --prerelease               --notes "Base exata da 0.8.8 aprovada. Alteração somente visual: logo Opção 2 nos ícones, splash, preview e Recentes, mais imageForRecents no appinfo. Nenhum JS/CSS/runtime alterado."
+          fi
