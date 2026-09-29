@@ -1,0 +1,198 @@
+name: Build YouTube UK6530 0.8.13 Cache Bust Splash
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-0813.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact approved 0.8.8 base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir restored
+          gh run download 36463105907             --repo "$GITHUB_REPOSITORY"             --name youtube-uk6530-lite-v0.3.2             --dir restored
+          echo "45d4c7e5f041d2d2f21cae4cb87a42e193fe69033d965a5dd571e3feddf9ff00  restored/YouTube-UK6530-Lite-v0.3.2.ipk" | sha256sum -c -
+
+      - name: Extract exact application
+        run: |
+          set -euo pipefail
+          mkdir raw app app_orig
+          cd raw
+          ar x ../restored/YouTube-UK6530-Lite-v0.3.2.ipk
+          tar -xzf data.tar.gz
+          cp -a usr/palm/applications/youtube.leanback.v4/. ../app/
+          cp -a usr/palm/applications/youtube.leanback.v4/. ../app_orig/
+
+      - name: Create original YouTube assets with new filenames
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+
+          cp app/icon.png app/icon_youtube_original_0813.png
+          cp app/largeIcon.png app/largeIcon_youtube_original_0813.png
+
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          import json
+
+          APP = Path("app")
+
+          # Source is the exact original YouTube large icon from approved 0.8.8.
+          src = Image.open(APP / "largeIcon.png").convert("RGBA")
+
+          # Detect all non-white content in the original wordmark.
+          px = src.load()
+          xs, ys = [], []
+          for y in range(src.height):
+              for x in range(src.width):
+                  r,g,b,a = px[x,y]
+                  if a > 0 and not (r > 245 and g > 245 and b > 245):
+                      xs.append(x); ys.append(y)
+          if not xs:
+              raise RuntimeError("Original YouTube artwork not detected")
+          box = (min(xs), min(ys), max(xs)+1, max(ys)+1)
+          logo = src.crop(box)
+
+          # Recents: same clean original YouTube look the user approved on 0.8.12.
+          W, H = 1920, 1080
+          rec = Image.new("RGBA", (W, H), (255,255,255,255))
+          target_w = 1050
+          target_h = round(logo.height * target_w / logo.width)
+          logo_rec = logo.resize((target_w, target_h), Image.Resampling.LANCZOS)
+          rec.alpha_composite(logo_rec, ((W-target_w)//2, (H-target_h)//2))
+          rec.convert("RGB").save(APP / "imageForRecents_youtube_original_0813.png", optimize=True)
+
+          # Splash: keep the exact YouTube mark shape, but adapt the black wordmark
+          # to white so it matches the dark YouTube loading screen visually.
+          splash_logo = logo.copy().convert("RGBA")
+          data = []
+          for r,g,b,a in splash_logo.getdata():
+              # preserve YouTube red pixels; convert dark wordmark pixels to white.
+              if a and r < 100 and g < 100 and b < 100:
+                  data.append((255,255,255,a))
+              else:
+                  data.append((r,g,b,a))
+          splash_logo.putdata(data)
+
+          splash = Image.new("RGBA", (W,H), (40,40,40,255))
+          splash_w = 760
+          splash_h = round(splash_logo.height * splash_w / splash_logo.width)
+          splash_logo = splash_logo.resize((splash_w, splash_h), Image.Resampling.LANCZOS)
+          splash.alpha_composite(splash_logo, ((W-splash_w)//2, (H-splash_h)//2))
+          splash.convert("RGB").save(APP / "splash_youtube_original_0813.png", optimize=True)
+
+          p = APP / "appinfo.json"
+          obj = json.loads(p.read_text(encoding="utf-8"))
+          obj["version"] = "0.8.13"
+          obj["icon"] = "icon_youtube_original_0813.png"
+          obj["largeIcon"] = "largeIcon_youtube_original_0813.png"
+          obj["splashBackground"] = "splash_youtube_original_0813.png"
+          obj["imageForRecents"] = "imageForRecents_youtube_original_0813.png"
+          p.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          assert Image.open(APP/"icon_youtube_original_0813.png").size == Image.open(APP/"icon.png").size
+          assert Image.open(APP/"largeIcon_youtube_original_0813.png").size == Image.open(APP/"largeIcon.png").size
+          assert Image.open(APP/"imageForRecents_youtube_original_0813.png").size == (1920,1080)
+          assert Image.open(APP/"splash_youtube_original_0813.png").size == (1920,1080)
+          assert obj["id"] == "youtube.leanback.v4"
+          PY
+
+      - name: Prove runtime code is untouched
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          OLD = Path("app_orig")
+          NEW = Path("app")
+          allowed_changed = {"appinfo.json"}
+          allowed_new = {
+              "icon_youtube_original_0813.png",
+              "largeIcon_youtube_original_0813.png",
+              "imageForRecents_youtube_original_0813.png",
+              "splash_youtube_original_0813.png",
+          }
+
+          def digest(p):
+              h=hashlib.sha256()
+              h.update(p.read_bytes())
+              return h.hexdigest()
+
+          old_files={p.relative_to(OLD).as_posix():p for p in OLD.rglob("*") if p.is_file()}
+          new_files={p.relative_to(NEW).as_posix():p for p in NEW.rglob("*") if p.is_file()}
+
+          for rel,p in old_files.items():
+              if rel in allowed_changed:
+                  continue
+              assert rel in new_files, f"Missing original file: {rel}"
+              assert digest(p)==digest(new_files[rel]), f"Unexpected modification: {rel}"
+
+          extras=set(new_files)-set(old_files)
+          assert extras == allowed_new, f"Unexpected new files: {extras}"
+
+          # Explicit byte-for-byte proof: no JS or CSS changed.
+          for rel,p in old_files.items():
+              if rel.endswith(".js") or rel.endswith(".css"):
+                  assert digest(p)==digest(new_files[rel]), rel
+
+          # The cache-busting icon files themselves are exact copies of 0.8.8 originals.
+          assert digest(NEW/"icon_youtube_original_0813.png") == digest(OLD/"icon.png")
+          assert digest(NEW/"largeIcon_youtube_original_0813.png") == digest(OLD/"largeIcon.png")
+          print("Runtime code untouched; cache-busting icons are byte-identical copies of 0.8.8 originals.")
+          PY
+
+      - name: Package with official webOS CLI
+        run: |
+          set -euo pipefail
+          npm install -g @webos-tools/cli@3.2.6
+          mkdir output
+          ares-package app -o output
+          IPK="$(find output -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.13*.ipk' | head -n 1)"
+          test -n "$IPK"
+          mv "$IPK" output/YouTube-UK6530-Lite-v0.8.13.ipk
+
+      - name: Verify final package
+        run: |
+          set -euo pipefail
+          rm -rf verify && mkdir verify
+          cd verify
+          ar x ../output/YouTube-UK6530-Lite-v0.8.13.ipk
+          mkdir data
+          tar -xzf data.tar.gz -C data
+          APP="data/usr/palm/applications/youtube.leanback.v4"
+          grep -F '"version": "0.8.13"' "$APP/appinfo.json"
+          grep -F '"icon": "icon_youtube_original_0813.png"' "$APP/appinfo.json"
+          grep -F '"largeIcon": "largeIcon_youtube_original_0813.png"' "$APP/appinfo.json"
+          grep -F '"splashBackground": "splash_youtube_original_0813.png"' "$APP/appinfo.json"
+          grep -F '"imageForRecents": "imageForRecents_youtube_original_0813.png"' "$APP/appinfo.json"
+          test -f "$APP/icon_youtube_original_0813.png"
+          test -f "$APP/largeIcon_youtube_original_0813.png"
+          test -f "$APP/splash_youtube_original_0813.png"
+          test -f "$APP/imageForRecents_youtube_original_0813.png"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum output/YouTube-UK6530-Lite-v0.8.13.ipk | tee output/SHA256SUMS.txt
+          TAG="youtube-uk6530-v0.3.2-0813"
+          IPK="output/YouTube-UK6530-Lite-v0.8.13.ipk"
+          SUMS="output/SHA256SUMS.txt"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 0.8.13"               --prerelease               --notes "Base binária exata da 0.8.8 aprovada. Ícones originais do YouTube copiados byte a byte para novos nomes para forçar atualização do cache do launcher; Recentes original do YouTube; splash local com a identidade visual original do YouTube em fundo escuro. Nenhum JS/CSS/runtime alterado."
+          fi
