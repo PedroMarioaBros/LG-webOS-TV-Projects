@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube AdFree Lite otimizado para LG UK6530PSF / webOS 4. Base 0.8.8 aprovada com identidade visual Opção 2.",
+      "description": "YouTube AdFree Lite otimizado para LG UK6530PSF / webOS 4. Base 0.8.8 aprovada, com identidade visual original do YouTube e correção de Recentes.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.8.11",
+        "version": "0.8.12",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "Base 0.8.8 aprovada com logo YouTube UK6530 Opção 2 e imagem correta em Recentes.",
+        "appDescription": "Base 0.8.8 aprovada com ícones e abertura originais do YouTube e imagem correta em Recentes.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.3.2-logo-option2/YouTube-UK6530-Lite-v0.8.11-LogoOption2.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.3.2-original-branding/YouTube-UK6530-Lite-v0.8.12-OriginalBranding.ipk",
         "ipkHash": {
-          "sha256": "dc8696d823e9f117d6b287df0cb36a01c8b1e8ee9c3c730ede5cb5255a4bce8e"
+          "sha256": "17660d917a89b1822410de5d9d6395ad24b1a033d82d413c9294f98fb9d2566b"
         }
       }
     }
