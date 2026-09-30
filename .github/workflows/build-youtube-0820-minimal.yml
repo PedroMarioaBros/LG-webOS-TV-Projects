@@ -1,5 +1,5 @@
 name: Build YouTube UK6530 0.8.20 Minimal
-# rebuild after validation fix
+# rebuild after compiled-scope validation fix
 
 on:
   push:
@@ -123,9 +123,9 @@ jobs:
           # Source options may still define dormant upstream thumbnail settings,
           # but no thumbnail engine/cache/custom PMCN module may be bundled.
 
-          # The two intended interventions are present.
-          grep -F "PMCN_BLOCKED_NAV_BROWSE_IDS" "$BUNDLE"
+          # The intended sidebar filter data survives minification.
           grep -F "FEgaming_destination" "$BUNDLE"
+          grep -F "FEpodcasts_destination" "$BUNDLE"
 
       - name: Prepare release file
         shell: bash
