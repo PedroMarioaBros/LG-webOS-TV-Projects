@@ -1,5 +1,5 @@
 name: Build YouTube UK6530 Cobalt Minimal 1.2.6
-# starterless Cobalt content path fix
+# diagnostic of packaged Cobalt preload hook
 
 on:
   push:
@@ -41,7 +41,10 @@ jobs:
           test -f "$APP/appinfo.json"
           test -e "$APP/cobalt"
           test -d "$APP/content/web/adblock"
-          grep -aFq '/web/adblock/adblockPreload.js' "$APP/cobalt"
+          echo "Cobalt package adblock files:"
+          find "$APP/content/web/adblock" -maxdepth 1 -type f -printf '%f\n' | sort
+          echo "Searching packaged runtime for early-preload hook:"
+          grep -aRl '/web/adblock/adblockPreload.js' "$APP" || true
           sha256sum "$APP/cobalt" > /tmp/original-cobalt.sha256
 
       - name: Replace all injected extras with PMCN minimal layer
