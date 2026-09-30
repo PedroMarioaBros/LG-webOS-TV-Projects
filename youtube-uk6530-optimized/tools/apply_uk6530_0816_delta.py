@@ -323,15 +323,13 @@ old_listener = """configAddChangeListener('upgradeThumbnails', (evt) => {
   enabled = !!evt.detail.newValue;
   if (enabled) loadCache();
   else cleanup();
-});
-"""
+});"""
 new_listener = """configAddChangeListener('upgradeThumbnails', () => {
   // PMCN Lite: the blue-button persisted mode is authoritative.
   enabled = pmcnFixedRank !== null;
   if (enabled) loadCache();
   else cleanup();
-});
-"""
+});"""
 if thumb.count(old_listener) != 1:
     raise RuntimeError("thumbnail-quality.js: upgradeThumbnails listener not found exactly once")
 thumb = thumb.replace(old_listener, new_listener, 1)
