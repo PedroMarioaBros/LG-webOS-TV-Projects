@@ -1,0 +1,254 @@
+name: Build YouTube UK6530 Cobalt Minimal 0.9.0
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-cobalt-minimal-090.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout pinned Cobalt AdFree source
+        uses: actions/checkout@v4
+        with:
+          repository: RF1705/youtube-webos-cobalt-adfree
+          ref: 40812b1fe8b8fcbbc0d69429741cfbb7e4019535
+          path: cobalt-src
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cobalt-src/webapp/package-lock.json
+
+      - name: Replace injected webapp with PMCN minimal layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp project/youtube-cobalt-minimal/config.js cobalt-src/webapp/src/config.js
+          cp project/youtube-cobalt-minimal/adblock-main.js cobalt-src/webapp/src/adblock-main.js
+          cp project/youtube-cobalt-minimal/adblock-preload.js cobalt-src/webapp/src/adblock-preload.js
+          cp project/youtube-cobalt-minimal/pmcn-nav-filter.mjs cobalt-src/webapp/src/pmcn-nav-filter.mjs
+
+      - name: Build minimal injected webapp
+        working-directory: cobalt-src/webapp
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build -- --env production --optimization-minimize
+          test -f output/adblockMain.js
+          test -f output/adblockPreload.js
+
+          # No optional project features may survive in the compiled layer.
+          ! grep -F "SponsorBlock" output/adblockMain.js
+          ! grep -F "Return YouTube Dislike" output/adblockMain.js
+          ! grep -F "__shorts" output/adblockMain.js
+          ! grep -F "thumbnailQuality" output/adblockMain.js
+          ! grep -F "pmcn-thumbnail" output/adblockMain.js
+          ! grep -F "pmcn-card-sync" output/adblockMain.js
+
+          # Required behavior is present.
+          grep -F "PMCN Cobalt Minimal" output/adblockMain.js
+          grep -F "PMCN Cobalt Minimal" output/adblockPreload.js
+          grep -F "FEgaming_destination" output/adblockPreload.js
+          grep -F "FEshorts" output/adblockPreload.js
+
+      - name: Download Cobalt runtime release and previous approved launcher assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          curl -fL --retry 4 --retry-delay 2             -o downloads/youtube-cobalt-base.ipk             "https://github.com/RF1705/youtube-webos-cobalt-adfree/releases/download/v1.2.5/youtube.leanback.v4_1.2.5_arm.ipk"
+
+          echo "189af7d46617a511b191dc472a9fcfec3d0f44caf70107fb1da9adde3d39f2de  downloads/youtube-cobalt-base.ipk" | sha256sum -c -
+
+          gh release download youtube-uk6530-v0.4.0-minimal             --repo "$GITHUB_REPOSITORY"             --pattern 'YouTube-UK6530-Minimal-v0.8.20.ipk'             --dir downloads
+
+      - name: Extract native Cobalt package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cobalt-ipk previous-ipk
+          (
+            cd cobalt-ipk
+            ar x ../downloads/youtube-cobalt-base.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          (
+            cd previous-ipk
+            ar x ../downloads/YouTube-UK6530-Minimal-v0.8.20.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+
+          APP="cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4"
+          OLD="previous-ipk/data/usr/palm/applications/youtube.leanback.v4"
+
+          test -d "$APP"
+          test -f "$APP/appinfo.json"
+          test -f "$APP/cobalt" -o -f "$APP/content/app/cobalt/bin/cobalt" -o -f "$APP/content/app/cobalt/cobalt"
+          test -f "$OLD/icon_youtube_original_0814.png"
+          test -f "$OLD/largeIcon_youtube_original_0814.png"
+          test -f "$OLD/imageForRecents_youtube_original_0814.png"
+
+      - name: Replace only injected adblock/navigation layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4"
+          TARGET="$APP/content/app/cobalt/content/web/adblock"
+
+          test -d "$TARGET"
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          cp -a cobalt-src/webapp/output/. "$TARGET/"
+
+          # The native Cobalt runtime and YouTube application payload remain intact.
+          test -f "$TARGET/adblockMain.js"
+          test -f "$TARGET/adblockPreload.js"
+
+      - name: Preserve approved launcher and Recents art, keep official Cobalt splash
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4"
+          OLD="previous-ipk/data/usr/palm/applications/youtube.leanback.v4"
+
+          cp "$OLD/icon_youtube_original_0814.png" "$APP/icon_youtube_original_0814.png"
+          cp "$OLD/largeIcon_youtube_original_0814.png" "$APP/largeIcon_youtube_original_0814.png"
+          cp "$OLD/imageForRecents_youtube_original_0814.png" "$APP/imageForRecents_youtube_original_0814.png"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          p=Path("cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4/appinfo.json")
+          obj=json.loads(p.read_text(encoding="utf-8"))
+
+          # Preserve native Cobalt architecture from the upstream package.
+          assert obj.get("type") == "native", obj.get("type")
+          assert obj.get("main") == "cobalt", obj.get("main")
+
+          obj["id"]="youtube.leanback.v4"
+          obj["version"]="0.9.0"
+          obj["title"]="YouTube UK6530"
+          obj["vendor"]="PMCN / Cobalt"
+          obj["icon"]="icon_youtube_original_0814.png"
+          obj["largeIcon"]="largeIcon_youtube_original_0814.png"
+          obj["imageForRecents"]="imageForRecents_youtube_original_0814.png"
+
+          # Do NOT remove or replace splashBackground: it belongs to the native
+          # Cobalt/official YouTube package and is exactly what we want here.
+          assert obj.get("splashBackground"), "Native Cobalt splash is missing"
+
+          p.write_text(json.dumps(obj, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
+          PY
+
+      - name: Verify architecture and scope before packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4"
+          OLD="previous-ipk/data/usr/palm/applications/youtube.leanback.v4"
+          TARGET="$APP/content/app/cobalt/content/web/adblock"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4/appinfo.json")
+          obj=json.loads(p.read_text())
+          assert obj["id"]=="youtube.leanback.v4"
+          assert obj["version"]=="0.9.0"
+          assert obj["type"]=="native"
+          assert obj["main"]=="cobalt"
+          assert obj["icon"]=="icon_youtube_original_0814.png"
+          assert obj["largeIcon"]=="largeIcon_youtube_original_0814.png"
+          assert obj["imageForRecents"]=="imageForRecents_youtube_original_0814.png"
+          assert obj.get("splashBackground")
+          print("Native Cobalt appinfo verified.")
+          PY
+
+          cmp "$OLD/icon_youtube_original_0814.png" "$APP/icon_youtube_original_0814.png"
+          cmp "$OLD/largeIcon_youtube_original_0814.png" "$APP/largeIcon_youtube_original_0814.png"
+          cmp "$OLD/imageForRecents_youtube_original_0814.png" "$APP/imageForRecents_youtube_original_0814.png"
+
+          # No custom thumbnail/card/watch-style code in our injected layer.
+          ! grep -R -F "thumbnailQuality" "$TARGET"
+          ! grep -R -F "maxresdefault" "$TARGET"
+          ! grep -R -F "pmcn-card-sync" "$TARGET"
+          ! grep -R -F "removeBlackBorders" "$TARGET"
+          ! grep -R -F "SponsorBlock" "$TARGET"
+
+          # Structural sidebar removal and ad blocking are present.
+          grep -R -F "FEshorts" "$TARGET"
+          grep -R -F "FEgaming_destination" "$TARGET"
+          grep -R -F "adPlacements" "$TARGET"
+
+      - name: Package with official webOS CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g @webos-tools/cli@3.2.6
+          mkdir -p output
+          APP="cobalt-ipk/data/usr/palm/applications/youtube.leanback.v4"
+          ares-package "$APP" -o output
+
+          IPK="$(find output -maxdepth 1 -type f -name 'youtube.leanback.v4_0.9.0*.ipk' | head -n 1)"
+          test -n "$IPK"
+          mv "$IPK" output/YouTube-UK6530-Cobalt-Minimal-v0.9.0.ipk
+          sha256sum output/YouTube-UK6530-Cobalt-Minimal-v0.9.0.ipk | tee output/SHA256SUMS.txt
+
+      - name: Verify final IPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final
+          (
+            cd final
+            ar x ../output/YouTube-UK6530-Cobalt-Minimal-v0.9.0.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          APP="final/data/usr/palm/applications/youtube.leanback.v4"
+          test -d "$APP"
+          grep -F '"version": "0.9.0"' "$APP/appinfo.json"
+          grep -F '"type": "native"' "$APP/appinfo.json"
+          grep -F '"main": "cobalt"' "$APP/appinfo.json"
+          grep -F '"icon": "icon_youtube_original_0814.png"' "$APP/appinfo.json"
+          grep -F '"imageForRecents": "imageForRecents_youtube_original_0814.png"' "$APP/appinfo.json"
+          grep -F '"splashBackground"' "$APP/appinfo.json"
+          grep -R -F "FEshorts" "$APP/content/app/cobalt/content/web/adblock"
+          grep -R -F "adPlacements" "$APP/content/app/cobalt/content/web/adblock"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-cobalt-v0.9.0"
+          IPK="output/YouTube-UK6530-Cobalt-Minimal-v0.9.0.ipk"
+          SUMS="output/SHA256SUMS.txt"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 Cobalt Minimal 0.9.0"               --prerelease               --notes "Nova arquitetura Cobalt nativa. Base runtime: YouTube webOS Cobalt AdFree v1.2.5. Camada PMCN reduzida a duas funções: bloqueio de anúncios/QR patrocinado e remoção pré-renderização de Shorts, Jogos, Música, Esportes, Podcasts, Notícias, Filmes e Ao Vivo apenas do menu lateral. Sem qualquer intervenção em thumbnails, cards, fontes, fundos, player, codec, previews, SponsorBlock, RYD ou auto-login. Ícones/Recentes preservados da 0.8.20; splash nativo Cobalt preservado."
+          fi
