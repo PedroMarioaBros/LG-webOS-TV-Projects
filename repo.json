@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube UK6530 — restauração exata da versão 0.8.19, publicada como 0.9.3 para atualização sem desinstalar.",
+      "description": "YouTube UK6530 restaurado exatamente para o comportamento da versão 0.8.19, publicado como 0.9.3 para atualização in-place.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
         "version": "0.9.3",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "Conteúdo funcional da 0.8.19 restaurado; única alteração é o número da versão para permitir atualização in-place.",
+        "appDescription": "Conteúdo da versão 0.8.19 restaurado integralmente; apenas o número da versão foi elevado para 0.9.3.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
         "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-restore-0819-v0.9.3/YouTube-UK6530-Restore-0819-v0.9.3.ipk",
         "ipkHash": {
-          "sha256": "8cbedf88357c34eb9bd18646babf38e751365ac9c659e8e5b7e1e98df7ba3977"
+          "sha256": "d5d6b3b73af73461a36dd837f8ff78af7e2148e28d2f324f449efc7d9ad1e982"
         }
       }
     }
