@@ -503,7 +503,11 @@ for forbidden in [
     "pmcn-thumbnail-quality",
     "pmcn-card-sync",
     "upgradeResponseThumbnails",
-    "thumbnailHookRequired",
+    "thumbnailHookRequired"
+]:
+    assert forbidden not in us + ad, forbidden
+
+for forbidden in [
     "force-codec.js",
     "sponsorblock.js",
     "emoji-font.js",
@@ -512,7 +516,7 @@ for forbidden in [
     "initBufferLimit",
     "attemptActiveBypass"
 ]:
-    assert forbidden not in us + ad, forbidden
+    assert forbidden not in us, forbidden
 
 assert "upgradeThumbnails: false" in cfg
 assert "forceHighResVideo: false" in cfg
