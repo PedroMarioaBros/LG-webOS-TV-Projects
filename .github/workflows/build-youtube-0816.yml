@@ -1,0 +1,176 @@
+name: Build YouTube UK6530 0.8.16
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-0816.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout pinned upstream
+        uses: actions/checkout@v4
+        with:
+          repository: NicholasBly/youtube-webos
+          ref: 5f7aa18fa0829b4e0607475222d5adacd85c6eff
+          path: upstream
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - name: Apply approved base and current fixes through 0.8.15
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0814_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0815_delta.py
+          sha256sum src/pmcn-menu-filter.js src/pmcn-card-sync.js > /tmp/navigation-layout-before-0816.sha
+
+      - name: Apply only thumbnail engine fix for 0.8.16
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0816_delta.py
+          sha256sum src/pmcn-menu-filter.js src/pmcn-card-sync.js > /tmp/navigation-layout-after-0816.sha
+          diff -u /tmp/navigation-layout-before-0816.sha /tmp/navigation-layout-after-0816.sha
+
+      - name: Restore exact visual assets from released 0.8.15
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p donor rawdonor
+          gh release download youtube-uk6530-v0.3.5             --repo "$GITHUB_REPOSITORY"             --pattern "YouTube-UK6530-Lite-v0.8.15.ipk"             --dir donor
+
+          echo "8f120540388c3665df2e52d28d54d25f69ba7746d463bdd282dbdf48d4528c90  donor/YouTube-UK6530-Lite-v0.8.15.ipk" | sha256sum -c -
+
+          cd rawdonor
+          ar x ../donor/YouTube-UK6530-Lite-v0.8.15.ipk
+          mkdir data
+          tar -xzf data.tar.gz -C data
+          cd ..
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, shutil, hashlib
+
+          donor = Path("rawdonor/data/usr/palm/applications/youtube.leanback.v4")
+          assets = Path("upstream/assets")
+
+          d = json.loads((donor/"appinfo.json").read_text(encoding="utf-8"))
+          a_path = assets/"appinfo.json"
+          a = json.loads(a_path.read_text(encoding="utf-8"))
+
+          for key in ("icon", "largeIcon", "imageForRecents"):
+              name = d[key]
+              shutil.copy2(donor/name, assets/name)
+              a[key] = name
+
+          # 0.8.15 has no local custom splash; preserve that exact behavior.
+          a.pop("splashBackground", None)
+          a["version"] = "0.8.16"
+          a_path.write_text(json.dumps(a, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          def sha(p):
+              return hashlib.sha256(p.read_bytes()).hexdigest()
+
+          for key in ("icon", "largeIcon", "imageForRecents"):
+              name = d[key]
+              assert sha(donor/name) == sha(assets/name), f"Visual asset changed: {name}"
+
+          assert a["icon"] == d["icon"]
+          assert a["largeIcon"] == d["largeIcon"]
+          assert a["imageForRecents"] == d["imageForRecents"]
+          assert "splashBackground" not in a
+          print("0.8.15 icons/Recents preserved byte-for-byte; splash state preserved.")
+          PY
+
+      - name: Verify thumbnail selector and protected scope
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Robust original engine is wired back into the parse hook.
+          grep -F "upgradeResponseThumbnails" src/adblock.js
+          grep -F "thumbnailHookRequired" src/adblock.js
+          grep -F "PMCN_QUALITY_STORAGE_KEY" src/thumbnail-quality.js
+          grep -F "buildUrl(videoId, QUALITY_NAMES[pmcnFixedRank], true)" src/thumbnail-quality.js
+
+          # Broken 0.8.15 generic tree rewriter is gone.
+          ! grep -F "rewriteThumbnailQuality" src/adblock.js
+          ! grep -F "rewriteThumbnailQuality" src/pmcn-thumbnail-quality.js
+
+          # Blue menu and all requested choices remain.
+          grep -F "ColorF3Blue" src/pmcn-thumbnail-quality.js
+          grep -F "Nativo (YouTube)" src/pmcn-thumbnail-quality.js
+          grep -F "120×90" src/pmcn-thumbnail-quality.js
+          grep -F "320×180" src/pmcn-thumbnail-quality.js
+          grep -F "480×360" src/pmcn-thumbnail-quality.js
+          grep -F "640×480" src/pmcn-thumbnail-quality.js
+          grep -F "1280×720" src/pmcn-thumbnail-quality.js
+          grep -F "Máxima" src/pmcn-thumbnail-quality.js
+
+          # Navigation removals remain in place.
+          grep -F "UK6530_BLOCKED_NAV_BROWSE_IDS" src/adblock.js
+          grep -F "FEgaming_destination" src/adblock.js
+          grep -F "FEpodcasts_destination" src/adblock.js
+          grep -F "FEstorefront" src/adblock.js
+
+          # Existing app visuals / no custom splash.
+          grep -F '"version": "0.8.16"' assets/appinfo.json
+          ! grep -F '"splashBackground"' assets/appinfo.json
+
+      - name: Install dependencies
+        working-directory: upstream
+        run: npm ci
+
+      - name: Build package
+        working-directory: upstream
+        run: |
+          npm run build
+          npm run package
+
+      - name: Prepare release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.16*.ipk' | head -n 1)"
+          test -n "$IPK"
+          cp "$IPK" output/YouTube-UK6530-Lite-v0.8.16.ipk
+          sha256sum output/YouTube-UK6530-Lite-v0.8.16.ipk | tee output/SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-v0.3.6"
+          IPK="output/YouTube-UK6530-Lite-v0.8.16.ipk"
+          SUMS="output/SHA256SUMS.txt"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 0.8.16"               --prerelease               --notes "Correção cirúrgica do seletor de qualidade de capas. O menu azul agora usa o motor original schema-aware de thumbnails do projeto e gera URLs limpas para Nativo, 120x90, 320x180, 480x360, 640x480, 1280x720 e Máxima. Menus laterais, lógica de layout, ícones e Recentes preservados; sem splash local personalizado."
+          fi
