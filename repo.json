@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube UK6530 em base Cobalt nativa: interface e comportamento do YouTube preservados, com bloqueio de anúncios e menu lateral enxuto.",
+      "description": "YouTube para LG UK6530PSF / webOS 4. Versão web estável: adblock + menu lateral enxuto.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "2.0.6",
+        "version": "0.8.20",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "Base Cobalt nativa. Somente bloqueio de anúncios do YouTube e remoção estrutural das categorias indesejadas do menu lateral; sem intervenção em capas, cards, textos, player, codec ou layout.",
+        "appDescription": "Versão estável para UK6530/webOS 4 enquanto a compatibilidade Cobalt nativa é investigada.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v2.0.6-cobalt-minimal/YouTube-UK6530-Cobalt-Minimal-v2.0.6.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.4.0-minimal/YouTube-UK6530-Minimal-v0.8.20.ipk",
         "ipkHash": {
-          "sha256": "8ac0a47650e5015f7498eefffec8771ed2d561b2cb2cc969832b3def5e80d363"
+          "sha256": "5eae156f78875230e7bcdaf32f34fd0dfc1379911e7a81085a40ab5498dff2e1"
         }
       }
     }
