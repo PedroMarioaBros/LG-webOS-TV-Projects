@@ -33,7 +33,28 @@ const MODES = [
 ];
 
 const MODE_BY_ID = new Map(MODES.map((m) => [m.id, m]));
-const URL_RE = /^https?://i\.ytimg\.com/vi(?:_webp)?/([\w-]+)/([\w-]+)\.(?:jpg|jpeg|webp|png)(.*)$/i;
+
+function parseThumbnailUrl(url) {
+  if (typeof url !== 'string') return null;
+
+  const jpegPrefix = 'https://i.ytimg.com/vi/';
+  const webpPrefix = 'https://i.ytimg.com/vi_webp/';
+  let rest = null;
+
+  if (url.indexOf(jpegPrefix) === 0) rest = url.slice(jpegPrefix.length);
+  else if (url.indexOf(webpPrefix) === 0) rest = url.slice(webpPrefix.length);
+  else return null;
+
+  const slash = rest.indexOf('/');
+  if (slash <= 0) return null;
+
+  const videoId = rest.slice(0, slash);
+  const fileAndQuery = rest.slice(slash + 1);
+  const q = fileAndQuery.indexOf('?');
+  const query = q >= 0 ? fileAndQuery.slice(q) : '';
+
+  return { videoId, query };
+}
 
 let currentMode = loadMode();
 let overlay = null;
@@ -75,9 +96,16 @@ export function rewriteThumbnailQuality(root) {
     if (!node || typeof node !== 'object' || depth > maxDepth) continue;
 
     if (typeof node.url === 'string' && node.url.indexOf('i.ytimg.com/vi') !== -1) {
-      const m = URL_RE.exec(node.url);
-      if (m) {
-        const next = 'https://i.ytimg.com/vi/' + m[1] + '/' + mode.basename + '.jpg' + (m[3] || '');
+      const parsed = parseThumbnailUrl(node.url);
+      if (parsed) {
+        const next =
+          'https://i.ytimg.com/vi/' +
+          parsed.videoId +
+          '/' +
+          mode.basename +
+          '.jpg' +
+          parsed.query;
+
         if (next !== node.url) {
           node.url = next;
           changed++;
