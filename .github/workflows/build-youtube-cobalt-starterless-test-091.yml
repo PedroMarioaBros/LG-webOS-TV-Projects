@@ -1,0 +1,202 @@
+name: Build UK6530 Cobalt Starterless Test 0.9.1
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-cobalt-starterless-test-091.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout Cobalt starterless source
+        uses: actions/checkout@v4
+        with:
+          repository: RF1705/youtube-webos-cobalt-adfree
+          ref: 1aea406e8c833e2fd16099e390da08b16326942f
+          path: cobalt-src
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cobalt-src/webapp/package-lock.json
+
+      - name: Replace injected webapp with PMCN minimal layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp project/youtube-cobalt-minimal/config.js cobalt-src/webapp/src/config.js
+          cp project/youtube-cobalt-minimal/adblock-main.js cobalt-src/webapp/src/adblock-main.js
+          cp project/youtube-cobalt-minimal/adblock-preload.js cobalt-src/webapp/src/adblock-preload.js
+          cp project/youtube-cobalt-minimal/pmcn-nav-filter.mjs cobalt-src/webapp/src/pmcn-nav-filter.mjs
+
+      - name: Build minimal injected layer
+        working-directory: cobalt-src/webapp
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build -- --env production --optimization-minimize
+          test -s output/adblockMain.js
+          test -s output/adblockMain.css
+          test -s output/adblockPreload.js
+
+          ! grep -F "SponsorBlock" output/adblockMain.js
+          ! grep -F "thumbnailQuality" output/adblockMain.js
+          ! grep -F "pmcn-card-sync" output/adblockMain.js
+
+          grep -F "PMCN Cobalt Minimal" output/adblockMain.js
+          grep -F "FEshorts" output/adblockPreload.js
+          grep -F "FEgaming_destination" output/adblockPreload.js
+
+      - name: Download starterless v2.0.5 package and stable PMCN package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          curl -fL --retry 4 --retry-delay 2             -o downloads/youtube-starterless.ipk             "https://github.com/RF1705/youtube-webos-cobalt-adfree/releases/download/v2.0.5-beta/youtube.leanback.v4_2.0.5_arm.ipk"
+          echo "1eb0453a3ffa2fe5045471f466d121ff0e4482cf797eaccdf3f259e67f7a0971  downloads/youtube-starterless.ipk" | sha256sum -c -
+
+          gh release download youtube-uk6530-v0.4.0-minimal             --repo "$GITHUB_REPOSITORY"             --pattern 'YouTube-UK6530-Minimal-v0.8.20.ipk'             --dir downloads
+
+      - name: Extract packages
+        run: |
+          set -euo pipefail
+          mkdir -p base stable
+          (
+            cd base
+            ar x ../downloads/youtube-starterless.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          (
+            cd stable
+            ar x ../downloads/YouTube-UK6530-Minimal-v0.8.20.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+
+          APP="base/data/usr/palm/applications/youtube.leanback.v4"
+          OLD="stable/data/usr/palm/applications/youtube.leanback.v4"
+          test -x "$APP/cobalt"
+          test -d "$APP/content/web/adblock"
+          test -f "$APP/appinfo.json"
+          test -f "$OLD/icon_youtube_original_0814.png"
+          test -f "$OLD/largeIcon_youtube_original_0814.png"
+          test -f "$OLD/imageForRecents_youtube_original_0814.png"
+
+      - name: Apply minimal web layer and isolated test identity
+        run: |
+          set -euo pipefail
+          APP="base/data/usr/palm/applications/youtube.leanback.v4"
+          TARGET="$APP/content/web/adblock"
+          OLD="stable/data/usr/palm/applications/youtube.leanback.v4"
+
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          cp -a cobalt-src/webapp/output/. "$TARGET/"
+
+          cp "$OLD/icon_youtube_original_0814.png" "$APP/icon_youtube_original_0814.png"
+          cp "$OLD/largeIcon_youtube_original_0814.png" "$APP/largeIcon_youtube_original_0814.png"
+          cp "$OLD/imageForRecents_youtube_original_0814.png" "$APP/imageForRecents_youtube_original_0814.png"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("base/data/usr/palm/applications/youtube.leanback.v4/appinfo.json")
+          obj=json.loads(p.read_text(encoding="utf-8"))
+
+          assert obj.get("type")=="native"
+          assert obj.get("main")=="cobalt"
+
+          obj["id"]="com.pmcn.youtube.cobalt.test"
+          obj["version"]="0.9.1"
+          obj["title"]="YouTube Cobalt TEST"
+          obj["vendor"]="PMCN"
+          obj["icon"]="icon_youtube_original_0814.png"
+          obj["largeIcon"]="largeIcon_youtube_original_0814.png"
+          obj["imageForRecents"]="imageForRecents_youtube_original_0814.png"
+
+          p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
+
+      - name: Verify test package scope
+        run: |
+          set -euo pipefail
+          APP="base/data/usr/palm/applications/youtube.leanback.v4"
+          TARGET="$APP/content/web/adblock"
+
+          test -x "$APP/cobalt"
+          grep -F '"id": "com.pmcn.youtube.cobalt.test"' "$APP/appinfo.json"
+          grep -F '"version": "0.9.1"' "$APP/appinfo.json"
+          grep -F '"type": "native"' "$APP/appinfo.json"
+          grep -F '"main": "cobalt"' "$APP/appinfo.json"
+
+          ! grep -R -F "thumbnailQuality" "$TARGET"
+          ! grep -R -F "maxresdefault" "$TARGET"
+          ! grep -R -F "pmcn-card-sync" "$TARGET"
+          ! grep -R -F "removeBlackBorders" "$TARGET"
+          ! grep -R -F "SponsorBlock" "$TARGET"
+
+          grep -R -F "FEshorts" "$TARGET"
+          grep -R -F "FEgaming_destination" "$TARGET"
+          grep -R -F "adPlacements" "$TARGET"
+
+      - name: Package with official webOS CLI
+        run: |
+          set -euo pipefail
+          npm install -g @webos-tools/cli@3.2.6
+          mkdir -p output
+          APP="base/data/usr/palm/applications/youtube.leanback.v4"
+          ares-package --no-minify "$APP" -o output
+
+          IPK="$(find output -maxdepth 1 -type f -name 'com.pmcn.youtube.cobalt.test_0.9.1*.ipk' | head -n 1)"
+          test -n "$IPK"
+          mv "$IPK" output/YouTube-UK6530-Cobalt-Starterless-TEST-v0.9.1.ipk
+          sha256sum output/YouTube-UK6530-Cobalt-Starterless-TEST-v0.9.1.ipk | tee output/SHA256SUMS.txt
+
+      - name: Verify final IPK
+        run: |
+          set -euo pipefail
+          mkdir -p final
+          (
+            cd final
+            ar x ../output/YouTube-UK6530-Cobalt-Starterless-TEST-v0.9.1.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          APP="final/data/usr/palm/applications/com.pmcn.youtube.cobalt.test"
+          test -x "$APP/cobalt"
+          grep -F '"id": "com.pmcn.youtube.cobalt.test"' "$APP/appinfo.json"
+          grep -F '"type": "native"' "$APP/appinfo.json"
+          grep -F '"main": "cobalt"' "$APP/appinfo.json"
+          grep -R -F "FEshorts" "$APP/content/web/adblock"
+          grep -R -F "adPlacements" "$APP/content/web/adblock"
+
+      - name: Publish isolated test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-cobalt-starterless-test-v0.9.1"
+          IPK="output/YouTube-UK6530-Cobalt-Starterless-TEST-v0.9.1.ipk"
+          SUMS="output/SHA256SUMS.txt"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 Cobalt Starterless TEST 0.9.1"               --prerelease               --notes "Teste isolado para UK6530/webOS 4. Base Cobalt starterless v2.0.5-beta, escolhida porque evita o starter proprietário SB13 da 0.9.0 que não é indicado para webOS 4. Usa ID separado com.pmcn.youtube.cobalt.test para não substituir a versão estável. Camada PMCN: apenas adblock e remoção pré-renderização do menu lateral. Sem intervenção em capas/layout/player."
+          fi
