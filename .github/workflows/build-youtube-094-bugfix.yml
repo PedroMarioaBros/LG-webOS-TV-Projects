@@ -1,0 +1,178 @@
+name: Build YouTube UK6530 0.9.4 Bugfix
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-094-bugfix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout pinned upstream
+        uses: actions/checkout@v4
+        with:
+          repository: NicholasBly/youtube-webos
+          ref: 5f7aa18fa0829b4e0607475222d5adacd85c6eff
+          path: upstream
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - name: Reconstruct exact 0.8.19 source stack
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0814_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0815_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0816_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0817_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0818_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0819_delta.py
+
+      - name: Apply only the two approved bug fixes
+        working-directory: upstream
+        run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_094_bugfix_delta.py
+
+      - name: Verify source scope
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          ! grep -F "initBufferLimit" src/userScript.js
+          ! grep -F "hooks/buffer-limit.js" src/userScript.js
+          grep -F "pmcnSeedRenderedThumbnailIds" src/thumbnail-quality.js
+          grep -F "scheduleProbe(videoId)" src/thumbnail-quality.js
+          grep -F "pendingPromotions.set(videoId, cached)" src/thumbnail-quality.js
+          grep -F "UK6530_BLOCKED_NAV_BROWSE_IDS" src/adblock.js
+          grep -F "ColorF3Blue" src/pmcn-thumbnail-quality.js
+          grep -F '"version": "0.9.4"' assets/appinfo.json
+
+      - name: Install dependencies and build bundle
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+      - name: Download exact 0.8.19 package as immutable payload base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p downloads old finalapp
+          gh release download youtube-uk6530-v0.3.9             --repo "$GITHUB_REPOSITORY"             --pattern 'YouTube-UK6530-Lite-v0.8.19.ipk'             --dir downloads
+          echo "f9c9073e3b9dadfb75884c316b8fff4274788859ced8d9895d446bce0ab63cd3  downloads/YouTube-UK6530-Lite-v0.8.19.ipk" | sha256sum -c -
+
+          (
+            cd old
+            ar x ../downloads/YouTube-UK6530-Lite-v0.8.19.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+
+          cp -a old/data/usr/palm/applications/youtube.leanback.v4/. finalapp/
+
+      - name: Replace only compiled user script and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE="$(find upstream/dist -type f -path '*/webOSUserScripts/userScript.js' | head -n 1)"
+          test -n "$BUNDLE"
+          test -f "$BUNDLE"
+          test -f finalapp/webOSUserScripts/userScript.js
+
+          cp "$BUNDLE" finalapp/webOSUserScripts/userScript.js
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("finalapp/appinfo.json")
+          obj=json.loads(p.read_text(encoding="utf-8"))
+          assert obj["id"]=="youtube.leanback.v4"
+          assert obj["version"]=="0.8.19"
+          obj["version"]="0.9.4"
+          p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
+
+      - name: Prove all other payload files are byte-identical to 0.8.19
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+
+          OLD=Path("old/data/usr/palm/applications/youtube.leanback.v4")
+          NEW=Path("finalapp")
+          allowed={"webOSUserScripts/userScript.js","appinfo.json"}
+
+          def sha(p):
+              h=hashlib.sha256(); h.update(p.read_bytes()); return h.hexdigest()
+
+          old={p.relative_to(OLD).as_posix():p for p in OLD.rglob("*") if p.is_file()}
+          new={p.relative_to(NEW).as_posix():p for p in NEW.rglob("*") if p.is_file()}
+          assert set(old)==set(new), (set(old)-set(new), set(new)-set(old))
+
+          changed=[rel for rel,p in old.items() if sha(p)!=sha(new[rel])]
+          assert set(changed)==allowed, f"Unexpected changed payload files: {changed}"
+
+          a=json.loads((OLD/"appinfo.json").read_text())
+          b=json.loads((NEW/"appinfo.json").read_text())
+          assert a["version"]=="0.8.19"
+          assert b["version"]=="0.9.4"
+          a["version"]=b["version"]
+          assert a==b, "appinfo changed beyond version"
+
+          print("Changed payload files only:", sorted(changed))
+          print("Menus/assets/icons/Recents/layout metadata are byte-identical to 0.8.19.")
+          PY
+
+      - name: Verify compiled bundle contains only intended fixes on top of stack
+        run: |
+          set -euo pipefail
+          BUNDLE="finalapp/webOSUserScripts/userScript.js"
+          grep -F "pmcnSeedRenderedThumbnailIds" "$BUNDLE"
+          grep -F "FEgaming_destination" "$BUNDLE"
+          grep -F "ColorF3Blue" "$BUNDLE"
+          ! grep -F "Initiating UK6530 Lite buffer limit" "$BUNDLE"
+
+      - name: Package with official webOS CLI
+        run: |
+          set -euo pipefail
+          npm install -g @webos-tools/cli@3.2.6
+          mkdir -p output
+          ares-package --no-minify finalapp -o output
+          IPK="$(find output -maxdepth 1 -type f -name 'youtube.leanback.v4_0.9.4*.ipk' | head -n 1)"
+          test -n "$IPK"
+          mv "$IPK" output/YouTube-UK6530-v0.9.4.ipk
+          sha256sum output/YouTube-UK6530-v0.9.4.ipk | tee output/SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-v0.9.4"
+          IPK="output/YouTube-UK6530-v0.9.4.ipk"
+          SUMS="output/SHA256SUMS.txt"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 0.9.4"               --prerelease               --notes "Base congelada 0.8.19/0.9.3. Duas correções apenas: (1) na primeira abertura, as thumbnails já renderizadas alimentam o mesmo verificador/promotor existente para receber a qualidade selecionada sem precisar trocar de aba; (2) removido somente o limitador customizado de SourceBuffer que podia causar o primeiro vídeo sem áudio. Todo o restante do payload permanece byte a byte igual à 0.8.19."
+          fi
