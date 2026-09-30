@@ -1,0 +1,214 @@
+name: Build YouTube UK6530 0.8.19
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-0819.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout pinned upstream
+        uses: actions/checkout@v4
+        with:
+          repository: NicholasBly/youtube-webos
+          ref: 5f7aa18fa0829b4e0607475222d5adacd85c6eff
+          path: upstream
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - name: Apply approved stack through 0.8.18
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0814_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0815_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0816_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0817_delta.py
+          python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0818_delta.py
+
+      - name: Apply only 0.8.19 thumbnail correction
+        working-directory: upstream
+        run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0819_delta.py
+
+      - name: Recreate unchanged launcher and Recents assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+          cp assets/icon.png assets/icon_youtube_original_0814.png
+          cp assets/largeIcon.png assets/largeIcon_youtube_original_0814.png
+
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          import json
+          from collections import deque
+
+          A=Path("assets")
+          src=Image.open(A/"largeIcon.png").convert("RGBA")
+          p=src.load(); w,h=src.size
+          seen=set(); q=deque()
+
+          def white(x,y):
+              r,g,b,a=p[x,y]
+              return a>0 and r>=225 and g>=225 and b>=225
+
+          for x in range(w):
+              for y in (0,h-1):
+                  if white(x,y):
+                      q.append((x,y)); seen.add((x,y))
+          for y in range(h):
+              for x in (0,w-1):
+                  if white(x,y) and (x,y) not in seen:
+                      q.append((x,y)); seen.add((x,y))
+
+          while q:
+              x,y=q.popleft()
+              for nx,ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                  if 0<=nx<w and 0<=ny<h and (nx,ny) not in seen and white(nx,ny):
+                      seen.add((nx,ny)); q.append((nx,ny))
+
+          logo=src.copy(); lp=logo.load()
+          for x,y in seen:
+              r,g,b,a=lp[x,y]; lp[x,y]=(r,g,b,0)
+          bbox=logo.getchannel("A").getbbox()
+          if not bbox: raise RuntimeError("Could not isolate original YouTube logo")
+          logo=logo.crop(bbox)
+
+          W,H=1920,1080
+          rec=Image.new("RGBA",(W,H),(255,255,255,255))
+          rw=1050
+          rh=round(logo.height*rw/logo.width)
+          logo=logo.resize((rw,rh),Image.Resampling.LANCZOS)
+          rec.alpha_composite(logo,((W-rw)//2,(H-rh)//2))
+          rec.convert("RGB").save(A/"imageForRecents_youtube_original_0814.png",optimize=True)
+
+          app=A/"appinfo.json"
+          obj=json.loads(app.read_text(encoding="utf-8"))
+          assert obj["version"]=="0.8.19"
+          obj["icon"]="icon_youtube_original_0814.png"
+          obj["largeIcon"]="largeIcon_youtube_original_0814.png"
+          obj["imageForRecents"]="imageForRecents_youtube_original_0814.png"
+          obj.pop("splashBackground",None)
+          app.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
+
+      - name: Verify thumbnail-only functional scope
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -F "import './pmcn-card-sync.js';" src/userScript.js
+          test ! -f src/pmcn-card-sync.js
+          grep -F "import './pmcn-thumbnail-quality.js';" src/userScript.js
+          grep -F "320×180 (16:9)" src/pmcn-thumbnail-quality.js
+          grep -F "1280×720 (16:9)" src/pmcn-thumbnail-quality.js
+          grep -F "Máxima (16:9)" src/pmcn-thumbnail-quality.js
+          ! grep -F "480×360" src/pmcn-thumbnail-quality.js
+          ! grep -F "640×480" src/pmcn-thumbnail-quality.js
+          grep -F "PMCN_16_9_FLOOR = RANK.mqdefault" src/thumbnail-quality.js
+          grep -F "pmcnApplyDimensions" src/thumbnail-quality.js
+          grep -F "pmcnProvidedHigh16x9" src/thumbnail-quality.js
+          grep -F "ytaf-thumb-quality-16x9-v1" src/thumbnail-quality.js
+          grep -F "UK6530_BLOCKED_NAV_BROWSE_IDS" src/adblock.js
+          grep -F "PMCN UK6530 0.8.18 — exact opaque-text layer cleanup." src/yt-fixes.css
+          grep -F '"version": "0.8.19"' assets/appinfo.json
+
+      - name: Install dependencies
+        working-directory: upstream
+        run: npm ci
+
+      - name: Build package
+        working-directory: upstream
+        run: |
+          npm run build
+          npm run package
+
+      - name: Prepare release file
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.19*.ipk' | head -n 1)"
+          test -n "$IPK"
+          cp "$IPK" output/YouTube-UK6530-Lite-v0.8.19.ipk
+          sha256sum output/YouTube-UK6530-Lite-v0.8.19.ipk | tee output/SHA256SUMS.txt
+
+      - name: Prove icons and metadata visuals unchanged from 0.8.18
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p baseline oldpkg newpkg
+          gh release download youtube-uk6530-v0.3.8             --repo "$GITHUB_REPOSITORY"             --pattern 'YouTube-UK6530-Lite-v0.8.18.ipk'             --dir baseline
+
+          (
+            cd oldpkg
+            ar x ../baseline/YouTube-UK6530-Lite-v0.8.18.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          (
+            cd newpkg
+            ar x ../output/YouTube-UK6530-Lite-v0.8.19.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+
+          OLD=oldpkg/data/usr/palm/applications/youtube.leanback.v4
+          NEW=newpkg/data/usr/palm/applications/youtube.leanback.v4
+
+          cmp "$OLD/icon_youtube_original_0814.png" "$NEW/icon_youtube_original_0814.png"
+          cmp "$OLD/largeIcon_youtube_original_0814.png" "$NEW/largeIcon_youtube_original_0814.png"
+          cmp "$OLD/imageForRecents_youtube_original_0814.png" "$NEW/imageForRecents_youtube_original_0814.png"
+          cmp "$OLD/9262051282473701_youtube_leanback_preview.png" "$NEW/9262051282473701_youtube_leanback_preview.png"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          OLD=Path("oldpkg/data/usr/palm/applications/youtube.leanback.v4")
+          NEW=Path("newpkg/data/usr/palm/applications/youtube.leanback.v4")
+          a=json.loads((OLD/"appinfo.json").read_text())
+          b=json.loads((NEW/"appinfo.json").read_text())
+          assert a["id"]==b["id"]=="youtube.leanback.v4"
+          assert a["icon"]==b["icon"]
+          assert a["largeIcon"]==b["largeIcon"]
+          assert a["imageForRecents"]==b["imageForRecents"]
+          assert "splashBackground" not in a and "splashBackground" not in b
+          print("Launcher/Recents/app identity preserved.")
+          PY
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-v0.3.9"
+          IPK="output/YouTube-UK6530-Lite-v0.8.19.ipk"
+          SUMS="output/SHA256SUMS.txt"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 0.8.19"               --prerelease               --notes "Correção da distorção das capas. Remove o antigo sincronizador de largura de cards, limita o seletor manual a formatos 16:9, mantém URL e metadados de dimensão coerentes, usa variantes 16:9 fornecidas pelo YouTube quando disponíveis e nunca faz fallback manual para hqdefault/sddefault 4:3. Menus laterais, ícones, Recentes, adblock, player e regras de texto preservados."
+          fi
