@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube UK6530 restaurado exatamente para o comportamento da versão 0.8.19, publicado como 0.9.3 para atualização in-place.",
+      "description": "YouTube UK6530 baseado na versão 0.8.19/0.9.3, com duas correções cirúrgicas: capas em alta qualidade já na primeira abertura e correção do primeiro vídeo sem áudio.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.9.3",
+        "version": "0.9.4",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "Conteúdo da versão 0.8.19 restaurado integralmente; apenas o número da versão foi elevado para 0.9.3.",
+        "appDescription": "Base 0.8.19 preservada; corrige somente o carregamento inicial das capas e remove o limitador customizado de SourceBuffer que podia causar o primeiro vídeo sem áudio.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-restore-0819-v0.9.3/YouTube-UK6530-Restore-0819-v0.9.3.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.9.4/YouTube-UK6530-v0.9.4.ipk",
         "ipkHash": {
-          "sha256": "d5d6b3b73af73461a36dd837f8ff78af7e2148e28d2f324f449efc7d9ad1e982"
+          "sha256": "dc6f2c540a964530689ab6cf66032153cc97b3e1c8ae65e308f43554a722e317"
         }
       }
     }
