@@ -59,11 +59,19 @@ jobs:
           echo "Resolved COBALT=$COBALT"
           sha256sum "$COBALT" > /tmp/original-cobalt.sha256
 
-          AD="$(find "$APP" -type d -path '*/content/web/adblock' -print -quit)"
-          test -n "$AD"
+          echo "=== candidate content/web directories ==="
+          find "$APP" -maxdepth 8 -type d \( -name adblock -o -name web -o -name content \) -print || true
+          echo "=== candidate injected assets ==="
+          find "$APP" -type f \( -name 'adblockMain.js' -o -name 'adblockPreload.js' -o -name 'adblockMain.css' \) -print || true
+
+          AD="$(find "$APP" -type d -name adblock -print -quit)"
+          if [ -z "$AD" ]; then
+            AD="$APP/content/web/adblock"
+            mkdir -p "$AD"
+          fi
           echo "$AD" > /tmp/adblock-path.txt
           echo "Resolved AD=$AD"
-          find "$AD" -maxdepth 1 -type f -printf '%f\n' | sort
+          find "$AD" -maxdepth 1 -type f -printf '%f\n' | sort || true
 
           echo "=== early preload hook references ==="
           grep -aRl '/web/adblock/adblockPreload.js' "$APP" || true
