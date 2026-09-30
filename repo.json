@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube para LG UK6530PSF / webOS 4. Base web funcional de recuperação: comportamento nativo do cliente web, sem anúncios e com menu lateral enxuto.",
+      "description": "YouTube para LG UK6530PSF / webOS 4. Pacote de recuperação baseado exatamente na versão funcional 0.8.20.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.8.20",
+        "version": "0.9.2",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "Versão estável de recuperação enquanto a compatibilidade Cobalt específica do webOS 4 é investigada.",
+        "appDescription": "Recuperação in-place sobre a Cobalt 0.9.0: mesmo conteúdo funcional da 0.8.20, apenas com versão maior.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v0.4.0-minimal/YouTube-UK6530-Minimal-v0.8.20.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-recovery-v0.9.2/YouTube-UK6530-Recovery-v0.9.2.ipk",
         "ipkHash": {
-          "sha256": "5eae156f78875230e7bcdaf32f34fd0dfc1379911e7a81085a40ab5498dff2e1"
+          "sha256": "4f0cba1b7ae49f35fe6fe55456c6daefe2deab562f05ceb8245cf074d36099a4"
         }
       }
     }
