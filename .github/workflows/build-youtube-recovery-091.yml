@@ -1,0 +1,129 @@
+name: Build YouTube UK6530 Recovery 0.9.1
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-recovery-091.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Download exact known-good 0.8.20 package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p base
+          gh release download youtube-uk6530-v0.4.0-minimal             --repo "$GITHUB_REPOSITORY"             --pattern 'YouTube-UK6530-Minimal-v0.8.20.ipk'             --dir base
+          echo "5eae156f78875230e7bcdaf32f34fd0dfc1379911e7a81085a40ab5498dff2e1  base/YouTube-UK6530-Minimal-v0.8.20.ipk" | sha256sum -c -
+
+      - name: Extract exact 0.8.20 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p unpack
+          (
+            cd unpack
+            ar x ../base/YouTube-UK6530-Minimal-v0.8.20.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          test -d unpack/data/usr/palm/applications/youtube.leanback.v4
+
+      - name: Change version only
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="unpack/data/usr/palm/applications/youtube.leanback.v4"
+          cp -a "$APP" app
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("app/appinfo.json")
+          obj=json.loads(p.read_text(encoding="utf-8"))
+          assert obj["id"]=="youtube.leanback.v4"
+          assert obj["version"]=="0.8.20"
+          obj["version"]="0.9.1"
+          p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
+
+      - name: Prove payload equals 0.8.20 except appinfo version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+
+          OLD=Path("unpack/data/usr/palm/applications/youtube.leanback.v4")
+          NEW=Path("app")
+
+          def sha(p):
+              h=hashlib.sha256()
+              h.update(p.read_bytes())
+              return h.hexdigest()
+
+          old={p.relative_to(OLD).as_posix():p for p in OLD.rglob("*") if p.is_file()}
+          new={p.relative_to(NEW).as_posix():p for p in NEW.rglob("*") if p.is_file()}
+          assert set(old)==set(new)
+
+          changed=[rel for rel,p in old.items() if sha(p)!=sha(new[rel])]
+          assert changed==["appinfo.json"], changed
+
+          a=json.loads((OLD/"appinfo.json").read_text())
+          b=json.loads((NEW/"appinfo.json").read_text())
+          a["version"]=b["version"]
+          assert a==b
+          assert b["version"]=="0.9.1"
+          print("Recovery payload verified: exact 0.8.20 runtime, version only changed.")
+          PY
+
+      - name: Package with official webOS CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g @webos-tools/cli@3.2.6
+          mkdir -p output
+          ares-package app -o output
+          IPK="$(find output -maxdepth 1 -type f -name 'youtube.leanback.v4_0.9.1*.ipk' | head -n 1)"
+          test -n "$IPK"
+          mv "$IPK" output/YouTube-UK6530-Recovery-v0.9.1.ipk
+          sha256sum output/YouTube-UK6530-Recovery-v0.9.1.ipk | tee output/SHA256SUMS.txt
+
+      - name: Verify final IPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verify
+          (
+            cd verify
+            ar x ../output/YouTube-UK6530-Recovery-v0.9.1.ipk
+            mkdir data
+            tar -xzf data.tar.gz -C data
+          )
+          APP="verify/data/usr/palm/applications/youtube.leanback.v4"
+          grep -F '"version": "0.9.1"' "$APP/appinfo.json"
+          grep -F '"id": "youtube.leanback.v4"' "$APP/appinfo.json"
+
+      - name: Publish recovery release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-v0.4.1-recovery"
+          IPK="output/YouTube-UK6530-Recovery-v0.9.1.ipk"
+          SUMS="output/SHA256SUMS.txt"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 Recovery 0.9.1"               --prerelease               --notes "Recovery imediato após incompatibilidade do Cobalt nativo com a UK6530/webOS 4. Runtime e payload idênticos à versão 0.8.20 estável; somente o número da versão foi elevado para 0.9.1 para permitir atualização sobre a 0.9.0 quebrada."
+          fi
