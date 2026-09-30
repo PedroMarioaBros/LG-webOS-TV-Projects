@@ -1,0 +1,222 @@
+name: Build YouTube UK6530 0.8.14
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-youtube-0814.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout PMCN project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout pinned upstream
+        uses: actions/checkout@v4
+        with:
+          repository: NicholasBly/youtube-webos
+          ref: 5f7aa18fa0829b4e0607475222d5adacd85c6eff
+          path: upstream
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - name: Apply approved 0.8.8 base
+        working-directory: upstream
+        run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_patch.py
+
+      - name: Apply 0.8.14 surgical delta
+        working-directory: upstream
+        run: python3 ../project/youtube-uk6530-optimized/tools/apply_uk6530_0814_delta.py
+
+      - name: Generate original YouTube visual assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          import json
+          from collections import deque
+
+          A = Path("assets")
+
+          # Cache-busting copies: same original 0.8.8 artwork, new filenames.
+          (A / "icon_youtube_original_0814.png").write_bytes((A / "icon.png").read_bytes())
+          (A / "largeIcon_youtube_original_0814.png").write_bytes((A / "largeIcon.png").read_bytes())
+
+          src = Image.open(A / "largeIcon.png").convert("RGBA")
+          w, h = src.size
+          px = src.load()
+
+          # Remove only the WHITE BACKGROUND connected to the image edges.
+          # This preserves the white play triangle because it is enclosed by red.
+          seen = set()
+          q = deque()
+          def near_white(x, y):
+              r, g, b, a = px[x, y]
+              return a > 0 and r >= 225 and g >= 225 and b >= 225
+
+          for x in range(w):
+              for y in (0, h - 1):
+                  if near_white(x, y):
+                      q.append((x, y)); seen.add((x, y))
+          for y in range(h):
+              for x in (0, w - 1):
+                  if near_white(x, y) and (x, y) not in seen:
+                      q.append((x, y)); seen.add((x, y))
+
+          while q:
+              x, y = q.popleft()
+              for nx, ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                  if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in seen and near_white(nx, ny):
+                      seen.add((nx, ny)); q.append((nx, ny))
+
+          logo = src.copy()
+          lp = logo.load()
+          for x, y in seen:
+              r,g,b,a = lp[x,y]
+              lp[x,y] = (r,g,b,0)
+
+          # On dark splash, convert the original black YouTube wordmark to white.
+          # Preserve the red play symbol and the white triangle.
+          for y in range(h):
+              for x in range(w):
+                  r,g,b,a = lp[x,y]
+                  if a == 0:
+                      continue
+                  if r < 115 and g < 115 and b < 115:
+                      # Preserve antialiasing by mapping darkness to white opacity.
+                      strength = 255 - max(r,g,b)
+                      lp[x,y] = (255,255,255,max(a,strength))
+
+          # Crop to visible logo.
+          alpha = logo.getchannel("A")
+          bbox = alpha.getbbox()
+          if not bbox:
+              raise RuntimeError("Could not isolate original YouTube logo")
+          logo = logo.crop(bbox)
+
+          # Clean local splash matching the official YouTube loading look.
+          W, H = 1920, 1080
+          bg = (40,40,40,255)
+          splash = Image.new("RGBA", (W,H), bg)
+          target_w = 760
+          target_h = round(logo.height * target_w / logo.width)
+          logo_s = logo.resize((target_w,target_h), Image.Resampling.LANCZOS)
+          splash.alpha_composite(logo_s, ((W-target_w)//2, (H-target_h)//2))
+          splash.convert("RGB").save(A / "splash_youtube_original_0814.png", optimize=True)
+
+          # Recentes: original YouTube wordmark on white, matching launcher identity.
+          # Use untouched original largeIcon, remove only edge-connected white and keep black text.
+          src2 = Image.open(A / "largeIcon.png").convert("RGBA")
+          p2 = src2.load()
+          w2,h2=src2.size
+          seen2=set(); q=deque()
+          def nw2(x,y):
+              r,g,b,a=p2[x,y]
+              return a>0 and r>=225 and g>=225 and b>=225
+          for x in range(w2):
+              for y in (0,h2-1):
+                  if nw2(x,y): q.append((x,y)); seen2.add((x,y))
+          for y in range(h2):
+              for x in (0,w2-1):
+                  if nw2(x,y) and (x,y) not in seen2: q.append((x,y)); seen2.add((x,y))
+          while q:
+              x,y=q.popleft()
+              for nx,ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                  if 0<=nx<w2 and 0<=ny<h2 and (nx,ny) not in seen2 and nw2(nx,ny):
+                      seen2.add((nx,ny)); q.append((nx,ny))
+          logo2=src2.copy(); lp2=logo2.load()
+          for x,y in seen2:
+              r,g,b,a=lp2[x,y]; lp2[x,y]=(r,g,b,0)
+          bb=logo2.getchannel("A").getbbox()
+          if not bb: raise RuntimeError("Could not isolate Recents logo")
+          logo2=logo2.crop(bb)
+
+          rec=Image.new("RGBA",(W,H),(255,255,255,255))
+          rw=1050
+          rh=round(logo2.height*rw/logo2.width)
+          logo2=logo2.resize((rw,rh),Image.Resampling.LANCZOS)
+          rec.alpha_composite(logo2,((W-rw)//2,(H-rh)//2))
+          rec.convert("RGB").save(A / "imageForRecents_youtube_original_0814.png", optimize=True)
+
+          # Update only visual metadata plus version already set by delta.
+          p=A/"appinfo.json"
+          obj=json.loads(p.read_text(encoding="utf-8"))
+          assert obj["version"]=="0.8.14"
+          obj["icon"]="icon_youtube_original_0814.png"
+          obj["largeIcon"]="largeIcon_youtube_original_0814.png"
+          obj["splashBackground"]="splash_youtube_original_0814.png"
+          obj["imageForRecents"]="imageForRecents_youtube_original_0814.png"
+          p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+
+          assert Image.open(A/"splash_youtube_original_0814.png").size==(1920,1080)
+          assert Image.open(A/"imageForRecents_youtube_original_0814.png").size==(1920,1080)
+          PY
+
+      - name: Verify targeted changes
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "UK6530_BLOCKED_NAV_BROWSE_IDS" src/adblock.js
+          grep -F "FEgaming_destination" src/adblock.js
+          grep -F "FEpodcasts_destination" src/adblock.js
+          grep -F "FEstorefront" src/adblock.js
+          grep -F "attributeFilter: ['aria-label', 'title']" src/pmcn-menu-filter.js
+          grep -F "setTimeout(() => schedule(document), ms)" src/pmcn-menu-filter.js
+          grep -F '"version": "0.8.14"' assets/appinfo.json
+          grep -F '"icon": "icon_youtube_original_0814.png"' assets/appinfo.json
+          grep -F '"splashBackground": "splash_youtube_original_0814.png"' assets/appinfo.json
+          grep -F '"imageForRecents": "imageForRecents_youtube_original_0814.png"' assets/appinfo.json
+
+      - name: Install dependencies
+        working-directory: upstream
+        run: npm ci
+
+      - name: Build legacy webOS package
+        working-directory: upstream
+        run: |
+          npm run build
+          npm run package
+
+      - name: Prepare release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          IPK="$(find upstream/dist -maxdepth 1 -type f -name 'youtube.leanback.v4_0.8.14*.ipk' | head -n 1)"
+          test -n "$IPK"
+          cp "$IPK" output/YouTube-UK6530-Lite-v0.8.14.ipk
+          sha256sum output/YouTube-UK6530-Lite-v0.8.14.ipk | tee output/SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="youtube-uk6530-v0.3.4"
+          IPK="output/YouTube-UK6530-Lite-v0.8.14.ipk"
+          SUMS="output/SHA256SUMS.txt"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPK" "$SUMS" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPK" "$SUMS"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "YouTube UK6530 0.8.14"               --prerelease               --notes "Base 0.8.8 aprovada. Correção estrutural dos itens indesejados no menu lateral antes da renderização, fallback de DOM sem corrida inicial, ícones originais com novos nomes para cache, Recentes original e splash YouTube corrigido. Sem alterações na lógica de cards da Início."
+          fi
