@@ -1,0 +1,30 @@
+{
+  "paging": {
+    "page": 1,
+    "count": 1,
+    "maxPage": 1,
+    "itemsTotal": 1
+  },
+  "packages": [
+    {
+      "id": "com.pmcn.youtube.cobalt.test",
+      "title": "YouTube Cobalt TEST UK6530",
+      "description": "Teste isolado Cobalt starterless para LG UK6530/webOS 4. Não substitui a versão estável.",
+      "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
+      "manifest": {
+        "id": "com.pmcn.youtube.cobalt.test",
+        "version": "0.9.1",
+        "type": "native",
+        "title": "YouTube Cobalt TEST",
+        "appDescription": "Teste de compatibilidade Cobalt starterless: adblock + remoção pré-renderização do menu lateral; sem intervenções em capas/layout/player.",
+        "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
+        "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
+        "rootRequired": false,
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-cobalt-starterless-test-v0.9.1/YouTube-UK6530-Cobalt-Starterless-TEST-v0.9.1.ipk",
+        "ipkHash": {
+          "sha256": "60361462c108d90be38fb73de2c4db6026820e0feb86e4e2712616b1d8f6236b"
+        }
+      }
+    }
+  ]
+}
