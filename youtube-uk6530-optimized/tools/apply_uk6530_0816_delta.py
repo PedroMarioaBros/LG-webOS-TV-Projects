@@ -50,7 +50,10 @@ function loadMode() {
 
 function saveMode(id) {
   currentMode = MODE_BY_ID.has(id) ? id : 'native';
-  try { window.localStorage.setItem(STORAGE_KEY, currentMode); } catch {}
+  try {
+    window.localStorage.setItem(STORAGE_KEY, currentMode);
+    window.localStorage.removeItem('ytaf-thumb-quality');
+  } catch {}
 }
 
 function isBlueKey(evt) {
@@ -256,7 +259,15 @@ replace_once(
 """
 )
 
-# 3) Teach the original robust engine to obey our persisted blue-menu mode.
+# 3) Keep the blue-button UI loaded explicitly. In 0.8.15 it was pulled in
+#    indirectly by adblock; 0.8.16 removes that dependency.
+replace_once(
+    "src/userScript.js",
+    "import './pmcn-card-sync.js';\n",
+    "import './pmcn-card-sync.js';\nimport './pmcn-thumbnail-quality.js';\n"
+)
+
+# 4) Teach the original robust engine to obey our persisted blue-menu mode.
 thumb_path = ROOT / "src/thumbnail-quality.js"
 thumb = thumb_path.read_text(encoding="utf-8")
 
@@ -303,13 +314,28 @@ thumb = thumb.replace(old_enabled, new_enabled, 1)
 upgrade_marker = """  const verified = qualityCache.get(videoId);
 """
 fixed_branch = r"""  // PMCN fixed mode: rewrite every thumbnail URL in the schema-aware
-  // containers to one clean YouTube derivative. We intentionally do NOT carry
+  // containers to one CLEAN YouTube derivative. We intentionally do NOT carry
   // the old URL query string: those parameters can preserve a lower resize /
   // transform and were the reason 0.8.15 appeared unchanged.
   if (pmcnFixedRank !== null) {
-    const next = buildUrl(videoId, QUALITY_NAMES[pmcnFixedRank], true);
+    const verified = qualityCache.get(videoId);
+    let target = pmcnFixedRank;
+
+    // Higher derivatives are not present for every upload. Show the requested
+    // rung immediately, then let the existing idle verifier correct only the
+    // videos where that derivative genuinely does not exist.
+    const needsProbe = target > GUARANTEED_RANK && verified === undefined;
+    if (needsProbe) scheduleProbe(videoId);
+    if (verified !== undefined && verified < target) target = verified;
+
+    const next = buildUrl(videoId, QUALITY_NAMES[target], true);
     if (next === url) return 0;
     entry.url = next;
+
+    if (needsProbe) {
+      const knownFloor = proven === undefined ? GUARANTEED_RANK : proven;
+      trackPending(videoId, entry, Math.min(knownFloor, pmcnFixedRank));
+    }
     return 1;
   }
 
@@ -317,6 +343,47 @@ fixed_branch = r"""  // PMCN fixed mode: rewrite every thumbnail URL in the sche
 if thumb.count(upgrade_marker) != 1:
     raise RuntimeError("thumbnail-quality.js: upgrade insertion marker not found exactly once")
 thumb = thumb.replace(upgrade_marker, fixed_branch, 1)
+
+# For explicit 640/720/max modes, verify the selected derivative and fall
+# back through lower high-quality rungs instead of leaving a grey thumbnail.
+old_resolve = """async function resolveQuality(videoId, onScreen) {
+  // On screen: the browser already holds the answer, so ask it. Off screen: a
+  // HEAD, because an <img> there would pull down a full image nobody is looking
+  // at - the correction path only has to be exact for tiles that are visible.
+  const check = onScreen ? imageExists : headExists;
+  for (let i = 0; i < PROBE_LADDER.length; i++) {
+    const rank = PROBE_LADDER[i];
+    if (await check(buildUrl(videoId, QUALITY_NAMES[rank]))) return rank;
+    if (!enabled) break;
+  }
+  return FLOOR_RANK;
+}
+"""
+new_resolve = """async function resolveQuality(videoId, onScreen) {
+  // On screen: the browser already holds the answer, so ask it. Off screen: a
+  // HEAD, because an <img> there would pull down a full image nobody is looking
+  // at - the correction path only has to be exact for tiles that are visible.
+  const check = onScreen ? imageExists : headExists;
+
+  if (pmcnFixedRank !== null && pmcnFixedRank > GUARANTEED_RANK) {
+    for (let rank = pmcnFixedRank; rank > GUARANTEED_RANK; rank--) {
+      if (await check(buildUrl(videoId, QUALITY_NAMES[rank], true))) return rank;
+      if (!enabled) break;
+    }
+    return GUARANTEED_RANK;
+  }
+
+  for (let i = 0; i < PROBE_LADDER.length; i++) {
+    const rank = PROBE_LADDER[i];
+    if (await check(buildUrl(videoId, QUALITY_NAMES[rank]))) return rank;
+    if (!enabled) break;
+  }
+  return FLOOR_RANK;
+}
+"""
+if thumb.count(old_resolve) != 1:
+    raise RuntimeError("thumbnail-quality.js: resolveQuality block not found exactly once")
+thumb = thumb.replace(old_resolve, new_resolve, 1)
 
 # The old config switch must not disable the blue-menu mode in the Lite build.
 old_listener = """configAddChangeListener('upgradeThumbnails', (evt) => {
@@ -336,7 +403,7 @@ thumb = thumb.replace(old_listener, new_listener, 1)
 
 thumb_path.write_text(thumb, encoding="utf-8")
 
-# 4) Keep all existing UX / menus / icons untouched; only bump version.
+# 5) Keep all existing UX / menus / icons untouched; only bump version.
 app = ROOT / "assets/appinfo.json"
 obj = json.loads(app.read_text(encoding="utf-8"))
 obj["version"] = "0.8.16"
@@ -347,7 +414,7 @@ pobj = json.loads(pkg.read_text(encoding="utf-8"))
 pobj["version"] = "0.8.16"
 pkg.write_text(json.dumps(pobj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-# 5) Static verification of scope and engine wiring.
+# 6) Static verification of scope and engine wiring.
 ad = (ROOT / "src/adblock.js").read_text(encoding="utf-8")
 menu_js = (ROOT / "src/pmcn-thumbnail-quality.js").read_text(encoding="utf-8")
 thumb_js = thumb_path.read_text(encoding="utf-8")
@@ -360,11 +427,14 @@ assert "FEgaming_destination" in ad
 assert "FEpodcasts_destination" in ad
 assert "FEstorefront" in ad
 assert "ColorF3Blue" in menu_js
+assert "removeItem('ytaf-thumb-quality')" in menu_js
 assert "rewriteThumbnailQuality" not in menu_js
+assert "import './pmcn-thumbnail-quality.js';" in (ROOT / "src/userScript.js").read_text(encoding="utf-8")
 assert "PMCN_QUALITY_STORAGE_KEY" in thumb_js
 assert "pmcnFixedRank" in thumb_js
 assert "entry.url = next;" in thumb_js
-assert "buildUrl(videoId, QUALITY_NAMES[pmcnFixedRank], true)" in thumb_js
+assert "Math.min(knownFloor, pmcnFixedRank)" in thumb_js
+assert "for (let rank = pmcnFixedRank; rank > GUARANTEED_RANK; rank--)" in thumb_js
 assert json.loads(app.read_text(encoding="utf-8"))["version"] == "0.8.16"
 
 print("PMCN UK6530 0.8.16 robust thumbnail engine applied successfully.")
