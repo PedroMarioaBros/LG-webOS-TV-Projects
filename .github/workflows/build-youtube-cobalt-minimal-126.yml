@@ -1,5 +1,5 @@
 name: Build YouTube UK6530 Cobalt Minimal 1.2.6
-# locate starterless Cobalt package structure dynamically
+# native Cobalt 2.0.5 base + PMCN minimal adblock/sidebar layer
 
 on:
   push:
@@ -24,8 +24,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -L --fail --retry 3             -o /tmp/cobalt.ipk             https://github.com/RF1705/youtube-webos-cobalt-adfree/releases/download/v1.2.5/youtube.leanback.v4_1.2.5_arm.ipk
-          echo "189af7d46617a511b191dc472a9fcfec3d0f44caf70107fb1da9adde3d39f2de  /tmp/cobalt.ipk" | sha256sum -c -
+          curl -L --fail --retry 3 \
+            -o /tmp/cobalt.ipk \
+            https://github.com/RF1705/youtube-webos-cobalt-adfree/releases/download/v2.0.5-beta/youtube.leanback.v4_2.0.5_arm.ipk
+          echo "1eb0453a3ffa2fe5045471f466d121ff0e4482cf797eaccdf3f259e67f7a0971  /tmp/cobalt.ipk" | sha256sum -c -
 
       - name: Extract and locate Cobalt app
         shell: bash
@@ -58,6 +60,8 @@ jobs:
           echo "$COBALT" > /tmp/cobalt-path.txt
           echo "Resolved COBALT=$COBALT"
           sha256sum "$COBALT" > /tmp/original-cobalt.sha256
+          strings "$COBALT" | grep -F "/web/adblock/adblockPreload.js"
+          strings "$COBALT" | grep -F "file:///adblock/adblockMain.js"
 
           echo "=== candidate content/web directories ==="
           find "$APP" -maxdepth 8 -type d \( -name adblock -o -name web -o -name content \) -print || true
@@ -82,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           APP=/tmp/cobalt-data/usr/palm/applications/youtube.leanback.v4
-          AD="$APP/content/web/adblock"
+          AD="$(cat /tmp/adblock-path.txt)"
 
           rm -rf "$AD"
           mkdir -p "$AD"
@@ -143,7 +147,7 @@ jobs:
         run: |
           set -euo pipefail
           APP=/tmp/cobalt-data/usr/palm/applications/youtube.leanback.v4
-          AD="$APP/content/web/adblock"
+          AD="$(cat /tmp/adblock-path.txt)"
 
           grep -F "stripAds" "$AD/adblockPreload.js"
           grep -F "stripBlockedGuideEntries" "$AD/adblockPreload.js"
@@ -204,7 +208,15 @@ jobs:
           tar -xzf /tmp/new-unpack/data.tar.gz -C /tmp/new-data
           APP=/tmp/new-data/usr/palm/applications/youtube.leanback.v4
           echo "$(cut -d' ' -f1 /tmp/original-cobalt.sha256)  $APP/cobalt" | sha256sum -c -
-          test "$(find "$APP/content/web/adblock" -maxdepth 1 -type f | wc -l)" -eq 3
+          AD="$(find "$APP" -type d -name adblock -print -quit)"
+          test -n "$AD"
+          test "$(find "$AD" -maxdepth 1 -type f | wc -l)" -eq 3
+          test -s "$AD/adblockPreload.js"
+          test -s "$AD/adblockMain.js"
+          test -s "$AD/adblockMain.css"
+          test "$(find "$APP" -type d -name adblock | wc -l)" -eq 1
+          ! grep -R -F "SponsorBlock" "$AD"
+          ! grep -R -F "thumbnail-quality" "$AD"
 
       - name: Publish test release
         env:
