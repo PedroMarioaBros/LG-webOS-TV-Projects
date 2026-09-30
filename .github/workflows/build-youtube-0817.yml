@@ -178,7 +178,7 @@ jobs:
 
           OLD=Path("oldpkg/data/usr/palm/applications/youtube.leanback.v4")
           NEW=Path("newpkg/data/usr/palm/applications/youtube.leanback.v4")
-          allowed={"index.js","appinfo.json"}
+          allowed={"webOSUserScripts/userScript.js","appinfo.json"}
 
           def sha(p):
               h=hashlib.sha256(); h.update(p.read_bytes()); return h.hexdigest()
