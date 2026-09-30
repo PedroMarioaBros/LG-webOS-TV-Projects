@@ -9,20 +9,20 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube UK6530",
-      "description": "YouTube para LG UK6530PSF / webOS 4. Pacote de recuperação baseado exatamente na versão funcional 0.8.20.",
+      "description": "YouTube UK6530 — restauração exata da versão 0.8.19, publicada como 0.9.3 para atualização sem desinstalar.",
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.9.2",
+        "version": "0.9.3",
         "type": "web",
         "title": "YouTube UK6530",
-        "appDescription": "Recuperação in-place sobre a Cobalt 0.9.0: mesmo conteúdo funcional da 0.8.20, apenas com versão maior.",
+        "appDescription": "Conteúdo funcional da 0.8.19 restaurado; única alteração é o número da versão para permitir atualização in-place.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-recovery-v0.9.2/YouTube-UK6530-Recovery-v0.9.2.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-restore-0819-v0.9.3/YouTube-UK6530-Restore-0819-v0.9.3.ipk",
         "ipkHash": {
-          "sha256": "4f0cba1b7ae49f35fe6fe55456c6daefe2deab562f05ceb8245cf074d36099a4"
+          "sha256": "8cbedf88357c34eb9bd18646babf38e751365ac9c659e8e5b7e1e98df7ba3977"
         }
       }
     }
