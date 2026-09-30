@@ -1,5 +1,5 @@
 name: Build YouTube UK6530 Cobalt Minimal 1.2.6
-# diagnostic of packaged Cobalt preload hook
+# locate starterless Cobalt package structure dynamically
 
 on:
   push:
@@ -27,25 +27,47 @@ jobs:
           curl -L --fail --retry 3             -o /tmp/cobalt.ipk             https://github.com/RF1705/youtube-webos-cobalt-adfree/releases/download/v1.2.5/youtube.leanback.v4_1.2.5_arm.ipk
           echo "189af7d46617a511b191dc472a9fcfec3d0f44caf70107fb1da9adde3d39f2de  /tmp/cobalt.ipk" | sha256sum -c -
 
-      - name: Extract Cobalt app
+      - name: Extract and locate Cobalt app
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf /tmp/cobalt-unpack /tmp/cobalt-data
           mkdir -p /tmp/cobalt-unpack /tmp/cobalt-data
           (
             cd /tmp/cobalt-unpack
             ar x /tmp/cobalt.ipk
           )
           tar -xzf /tmp/cobalt-unpack/data.tar.gz -C /tmp/cobalt-data
-          APP=/tmp/cobalt-data/usr/palm/applications/youtube.leanback.v4
+
+          echo "=== top extracted tree ==="
+          find /tmp/cobalt-data -maxdepth 7 -printf '%y %p\n' | head -n 250 || true
+          echo "=== appinfo candidates ==="
+          find /tmp/cobalt-data -name appinfo.json -print || true
+          echo "=== cobalt candidates ==="
+          find /tmp/cobalt-data \( -name cobalt -o -name libcobalt.so \) -print || true
+          echo "=== adblock directories ==="
+          find /tmp/cobalt-data -type d -path '*adblock*' -print || true
+
+          APP="$(dirname "$(find /tmp/cobalt-data -name appinfo.json -path '*youtube.leanback.v4*' -print -quit)")"
+          test -n "$APP"
+          echo "Resolved APP=$APP"
           test -f "$APP/appinfo.json"
-          test -e "$APP/cobalt"
-          test -d "$APP/content/web/adblock"
-          echo "Cobalt package adblock files:"
-          find "$APP/content/web/adblock" -maxdepth 1 -type f -printf '%f\n' | sort
-          echo "Searching packaged runtime for early-preload hook:"
+
+          COBALT="$(find "$APP" -type f -name cobalt -print -quit)"
+          test -n "$COBALT"
+          echo "$COBALT" > /tmp/cobalt-path.txt
+          echo "Resolved COBALT=$COBALT"
+          sha256sum "$COBALT" > /tmp/original-cobalt.sha256
+
+          AD="$(find "$APP" -type d -path '*/content/web/adblock' -print -quit)"
+          test -n "$AD"
+          echo "$AD" > /tmp/adblock-path.txt
+          echo "Resolved AD=$AD"
+          find "$AD" -maxdepth 1 -type f -printf '%f\n' | sort
+
+          echo "=== early preload hook references ==="
           grep -aRl '/web/adblock/adblockPreload.js' "$APP" || true
-          sha256sum "$APP/cobalt" > /tmp/original-cobalt.sha256
+          grep -aRl 'adblockPreload.js' "$APP" || true
 
       - name: Replace all injected extras with PMCN minimal layer
         shell: bash
@@ -94,7 +116,7 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          p=Path("/tmp/cobalt-data/usr/palm/applications/youtube.leanback.v4/appinfo.json")
+          p=next(Path("/tmp/cobalt-data").rglob("appinfo.json"))
           o=json.loads(p.read_text())
           assert o["id"]=="youtube.leanback.v4"
           assert o["type"]=="native"
@@ -132,7 +154,7 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          p=Path("/tmp/cobalt-data/usr/palm/applications/youtube.leanback.v4/appinfo.json")
+          p=next(Path("/tmp/cobalt-data").rglob("appinfo.json"))
           o=json.loads(p.read_text())
           assert o["id"]=="youtube.leanback.v4"
           assert o["type"]=="native"
