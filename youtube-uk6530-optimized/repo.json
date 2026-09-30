@@ -13,16 +13,16 @@
       "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "1.2.6",
+        "version": "2.0.6",
         "type": "web",
         "title": "YouTube UK6530",
         "appDescription": "Base Cobalt nativa. Somente bloqueio de anúncios do YouTube e remoção estrutural das categorias indesejadas do menu lateral; sem intervenção em capas, cards, textos, player, codec ou layout.",
         "iconUri": "https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v1.2.6-cobalt-minimal/YouTube-UK6530-Cobalt-Minimal-v1.2.6.ipk",
+        "ipkUrl": "https://github.com/PedroMarioaBros/LG-webOS-TV-Projects/releases/download/youtube-uk6530-v2.0.6-cobalt-minimal/YouTube-UK6530-Cobalt-Minimal-v2.0.6.ipk",
         "ipkHash": {
-          "sha256": "d198dc71f240fd54aa4b7f98d8c48a68cadff317e19bf595a39bccae297de97a"
+          "sha256": "8ac0a47650e5015f7498eefffec8771ed2d561b2cb2cc969832b3def5e80d363"
         }
       }
     }
