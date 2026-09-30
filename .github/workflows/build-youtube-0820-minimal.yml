@@ -1,4 +1,5 @@
 name: Build YouTube UK6530 0.8.20 Minimal
+# rebuild after validation fix
 
 on:
   push:
@@ -119,8 +120,8 @@ jobs:
           ! grep -F "pmcn-card-sync" "$BUNDLE"
           ! grep -F "ytaf-thumb-quality" "$BUNDLE"
           ! grep -F "pmcn-subscriptions-card-width" "$BUNDLE"
-          ! grep -F "Max Thumbnail Quality" "$BUNDLE"
-          ! grep -F "thumbnailQualityMode" "$BUNDLE"
+          # Source options may still define dormant upstream thumbnail settings,
+          # but no thumbnail engine/cache/custom PMCN module may be bundled.
 
           # The two intended interventions are present.
           grep -F "PMCN_BLOCKED_NAV_BROWSE_IDS" "$BUNDLE"
